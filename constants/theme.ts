@@ -16,6 +16,16 @@ export const Colors = {
     icon: '#687076',
     tabIconDefault: '#687076',
     tabIconSelected: tintColorLight,
+    // Alarm status colours
+    alarmIdle: '#687076',
+    alarmScheduled: '#0a7ea4',
+    alarmMonitoring: '#F59E0B',
+    alarmFiring: '#EF4444',
+    alarmSnoozed: '#8B5CF6',
+    alarmDismissed: '#22C55E',
+    // Surface colours
+    cardBackground: '#F8F9FA',
+    border: '#E5E7EB',
   },
   dark: {
     text: '#ECEDEE',
@@ -24,6 +34,16 @@ export const Colors = {
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
     tabIconSelected: tintColorDark,
+    // Alarm status colours
+    alarmIdle: '#9BA1A6',
+    alarmScheduled: '#38BDF8',
+    alarmMonitoring: '#FCD34D',
+    alarmFiring: '#F87171',
+    alarmSnoozed: '#A78BFA',
+    alarmDismissed: '#4ADE80',
+    // Surface colours
+    cardBackground: '#1E2022',
+    border: '#374151',
   },
 };
 

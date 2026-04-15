@@ -1,98 +1,236 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useState, useCallback } from 'react';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { AlarmCard } from '@/components/alarm/alarm-card';
+import { DestinationCard } from '@/components/destination/destination-card';
+import { useAlarm } from '@/src/hooks/use-alarm';
+import { useTraffic } from '@/src/hooks/use-traffic';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
-export default function HomeScreen() {
+export default function AlarmScreen() {
+  const { config, status, lastCalculatedWakeTime, snoozeCount, enableAlarm, disableAlarm, updateConfig, snooze, dismiss } = useAlarm();
+  const { lastResult, isFetching } = useTraffic();
+  const tint = useThemeColor({}, 'tint');
+
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Build a Date object from the stored hour/minute for the picker
+  const pickerDate = (() => {
+    const d = new Date();
+    d.setHours(config?.arrivalTime.hour ?? 8, config?.arrivalTime.minute ?? 0, 0, 0);
+    return d;
+  })();
+
+  const handleTimeChange = useCallback(
+    (event: DateTimePickerEvent, selected?: Date) => {
+      if (Platform.OS === 'android') setShowTimePicker(false);
+      if (event.type === 'dismissed') return;
+      if (selected) {
+        updateConfig({ arrivalTime: { hour: selected.getHours(), minute: selected.getMinutes() } });
+      }
+    },
+    [updateConfig],
+  );
+
+  const handleToggle = async (enabled: boolean) => {
+    if (enabled) {
+      await enableAlarm();
+    } else {
+      await disableAlarm();
+    }
+  };
+
+  // Empty state — no config yet
+  if (!config) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ThemedView style={styles.empty}>
+          <ThemedText type="title" style={styles.emptyTitle}>SyncWake</ThemedText>
+          <ThemedText style={styles.emptyBody}>
+            Set your destination and arrival time in Settings to get started.
+          </ThemedText>
+        </ThemedView>
+      </SafeAreaView>
+    );
+  }
+
+  // Firing overlay
+  if (status === 'firing') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ThemedView style={styles.firing}>
+          <ThemedText type="title" style={styles.firingTitle}>Wake Up!</ThemedText>
+          <ThemedText style={styles.firingBody}>
+            Time to start your commute.
+          </ThemedText>
+          <View style={styles.firingActions}>
+            {snoozeCount < 3 && (
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.snoozeBtn]}
+                onPress={snooze}
+              >
+                <ThemedText type="defaultSemiBold">Snooze</ThemedText>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: tint }]}
+              onPress={dismiss}
+            >
+              <ThemedText type="defaultSemiBold" style={{ color: '#fff' }}>
+                Dismiss
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </ThemedView>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.safe}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <ThemedText type="title" style={styles.heading}>SyncWake</ThemedText>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <AlarmCard
+          config={config}
+          status={status}
+          wakeTimeIso={lastCalculatedWakeTime}
+          trafficResult={lastResult}
+          isFetchingTraffic={isFetching}
+          onToggle={handleToggle}
+          onEditArrivalTime={() => setShowTimePicker(true)}
+        />
+
+        {/* Android: DateTimePicker renders as a dialog directly */}
+        {showTimePicker && Platform.OS === 'android' && (
+          <DateTimePicker
+            mode="time"
+            value={pickerDate}
+            onChange={handleTimeChange}
+          />
+        )}
+
+        <View style={styles.gap} />
+
+        <DestinationCard
+          destination={config.destination}
+          onPress={() => {/* Phase 2: navigate to destination picker */}}
+        />
+      </ScrollView>
+
+      {/* iOS: wrap in a modal so the spinner sits in a dismissable sheet */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={showTimePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowTimePicker(false)}
+          >
+            <ThemedView style={styles.pickerSheet}>
+              <View style={styles.pickerHeader}>
+                <ThemedText type="defaultSemiBold">Must arrive by</ThemedText>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <ThemedText type="link">Done</ThemedText>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                mode="time"
+                display="spinner"
+                value={pickerDate}
+                onChange={handleTimeChange}
+                style={styles.picker}
+              />
+            </ThemedView>
+          </TouchableOpacity>
+        </Modal>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  safe: { flex: 1 },
+  scroll: {
+    paddingVertical: 24,
+    gap: 12,
+  },
+  heading: {
+    paddingHorizontal: 20,
+    marginBottom: 4,
+  },
+  gap: { height: 4 },
+  empty: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    padding: 32,
+    gap: 12,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  emptyTitle: {
+    textAlign: 'center',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  emptyBody: {
+    textAlign: 'center',
+    opacity: 0.6,
+    lineHeight: 22,
+  },
+  firing: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    gap: 16,
+  },
+  firingTitle: {
+    fontSize: 48,
+  },
+  firingBody: {
+    opacity: 0.7,
+    textAlign: 'center',
+  },
+  firingActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  actionBtn: {
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  snoozeBtn: {
+    backgroundColor: 'rgba(139,92,246,0.15)',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 32,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  picker: {
+    width: '100%',
   },
 });
