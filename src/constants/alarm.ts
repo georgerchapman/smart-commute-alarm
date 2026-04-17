@@ -28,6 +28,10 @@ export const BACKGROUND_FETCH_INTERVAL_SECONDS = 15 * 60; // 15 minutes
 // In-memory route cache TTL
 export const ROUTE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Minimum interval between foreground traffic refreshes on the home screen.
+// Keeps API calls to once per window even if the user navigates in and out repeatedly.
+export const FOREGROUND_TRAFFIC_MIN_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
 // Fallback static commute duration when no prior data is available
 export const FALLBACK_COMMUTE_SECONDS = 45 * 60; // 45 minutes
 

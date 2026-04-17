@@ -48,15 +48,13 @@ export function DestinationPicker({ value, onChange }: Props) {
         body: JSON.stringify({ input }),
       });
       const data = await res.json();
-      console.log('[Places] status:', res.status, 'body:', JSON.stringify(data));
       setSuggestions(
         (data.suggestions ?? []).map((s: any) => ({
           placeId: s.placePrediction.placeId,
           text: s.placePrediction.text.text,
         }))
       );
-    } catch (err) {
-      console.log('[Places] fetch error:', err);
+    } catch {
       setSuggestions([]);
     } finally {
       setLoading(false);
@@ -67,7 +65,7 @@ export function DestinationPicker({ value, onChange }: Props) {
     (input: string) => {
       setQuery(input);
       if (debounce.current) clearTimeout(debounce.current);
-      debounce.current = setTimeout(() => fetchSuggestions(input), 400);
+      debounce.current = setTimeout(() => fetchSuggestions(input), 600);
     },
     [fetchSuggestions]
   );

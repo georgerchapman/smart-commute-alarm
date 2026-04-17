@@ -15,6 +15,9 @@ import { useTraffic } from '@/src/hooks/use-traffic';
 import { useNominalJourney } from '@/src/hooks/use-nominal-journey';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { logger } from '@/src/utils/logger';
+import { buildArrivalDate } from '@/src/utils/time';
+import { isInMonitoringWindow } from '@/src/utils/backoff';
+import { FOREGROUND_TRAFFIC_MIN_INTERVAL_MS } from '@/src/constants/alarm';
 
 export default function AlarmScreen() {
   const router = useRouter();
@@ -40,10 +43,27 @@ export default function AlarmScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpired]);
 
-  // Auto-refresh live traffic whenever the screen comes into focus and alarm is enabled
+  // Auto-refresh live traffic when the screen focuses, but only:
+  //  1. Within the monitoring window (≤90 min before arrival) — no point calling earlier
+  //  2. At most once per FOREGROUND_TRAFFIC_MIN_INTERVAL_MS — avoids hammering the API
+  //     when the user navigates in/out of the screen repeatedly
   useFocusEffect(
     useCallback(() => {
       if (!config?.enabled) return;
+
+      // Outside the monitoring window — background task will handle it when the time comes
+      const arrivalDate = buildArrivalDate(config.arrivalTime);
+      if (!isInMonitoringWindow(new Date(), arrivalDate)) return;
+
+      // Recently fetched — skip until the cooldown has elapsed
+      if (
+        lastFetchedAt &&
+        Date.now() - new Date(lastFetchedAt).getTime() < FOREGROUND_TRAFFIC_MIN_INTERVAL_MS
+      ) {
+        logger.debug('Foreground traffic refresh skipped — within cooldown window');
+        return;
+      }
+
       (async () => {
         try {
           const { status: locStatus } = await Location.getForegroundPermissionsAsync();
@@ -56,7 +76,7 @@ export default function AlarmScreen() {
           logger.warn('Home screen traffic refresh failed', err);
         }
       })();
-    }, [config?.enabled, refreshTraffic])
+    }, [config?.enabled, config?.arrivalTime, lastFetchedAt, refreshTraffic])
   );
 
   // Build a Date object from the stored hour/minute for the picker
