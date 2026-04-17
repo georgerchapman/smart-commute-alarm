@@ -46,7 +46,7 @@ export function useNominalJourney() {
             travelMode: 'DRIVE',
             routingPreference: 'TRAFFIC_UNAWARE',
           },
-          90
+          60 // checkpoint value is informational only; nominal fetch is traffic-unaware
         );
         if (!cancelled) {
           setDurationSeconds(result.durationSeconds);

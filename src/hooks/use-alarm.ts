@@ -87,7 +87,7 @@ export function useAlarm() {
           travelMode: 'DRIVE',
           routingPreference: 'TRAFFIC_AWARE',
         },
-        15
+        10 // snooze is always close to wake time
       );
       return result.durationSeconds;
     };

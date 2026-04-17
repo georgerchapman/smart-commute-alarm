@@ -15,7 +15,6 @@ import { useTraffic } from '@/src/hooks/use-traffic';
 import { useNominalJourney } from '@/src/hooks/use-nominal-journey';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { logger } from '@/src/utils/logger';
-import { buildArrivalDate } from '@/src/utils/time';
 import { isInMonitoringWindow } from '@/src/utils/backoff';
 import { FOREGROUND_TRAFFIC_MIN_INTERVAL_MS } from '@/src/constants/alarm';
 
@@ -44,16 +43,19 @@ export default function AlarmScreen() {
   }, [isExpired]);
 
   // Auto-refresh live traffic when the screen focuses, but only:
-  //  1. Within the monitoring window (≤90 min before arrival) — no point calling earlier
-  //  2. At most once per FOREGROUND_TRAFFIC_MIN_INTERVAL_MS — avoids hammering the API
-  //     when the user navigates in/out of the screen repeatedly
+  //  1. Within the monitoring window (≤60 min before the scheduled wake time)
+  //  2. At most once per FOREGROUND_TRAFFIC_MIN_INTERVAL_MS — avoids hammering the
+  //     API when the user navigates in/out of the screen repeatedly.
+  //
+  // The window is intentionally wake-time relative (not arrival-time relative) so
+  // that it matches when the background task starts checking.
   useFocusEffect(
     useCallback(() => {
-      if (!config?.enabled) return;
+      if (!config?.enabled || !lastCalculatedWakeTime) return;
 
-      // Outside the monitoring window — background task will handle it when the time comes
-      const arrivalDate = buildArrivalDate(config.arrivalTime);
-      if (!isInMonitoringWindow(new Date(), arrivalDate)) return;
+      // Outside the monitoring window — nothing useful to show yet
+      const wakeDate = new Date(lastCalculatedWakeTime);
+      if (!isInMonitoringWindow(new Date(), wakeDate)) return;
 
       // Recently fetched — skip until the cooldown has elapsed
       if (
@@ -76,7 +78,7 @@ export default function AlarmScreen() {
           logger.warn('Home screen traffic refresh failed', err);
         }
       })();
-    }, [config?.enabled, config?.arrivalTime, lastFetchedAt, refreshTraffic])
+    }, [config?.enabled, lastCalculatedWakeTime, lastFetchedAt, refreshTraffic])
   );
 
   // Build a Date object from the stored hour/minute for the picker
@@ -100,6 +102,20 @@ export default function AlarmScreen() {
   const handleToggle = async (enabled: boolean) => {
     if (enabled) {
       await enableAlarm(nominalSeconds ?? undefined);
+      // Immediately fetch live traffic so the alarm is refined with real data
+      // before the first background check fires. refreshTraffic will reschedule
+      // the notification if the live journey time differs meaningfully.
+      try {
+        const { status: locStatus } = await Location.getForegroundPermissionsAsync();
+        if (locStatus === 'granted') {
+          const pos = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          await refreshTraffic(pos.coords.latitude, pos.coords.longitude);
+        }
+      } catch (err) {
+        logger.warn('Immediate traffic refresh after alarm enable failed', err);
+      }
     } else {
       await disableAlarm();
     }

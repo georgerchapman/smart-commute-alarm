@@ -31,20 +31,33 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
     }
 
     const now = new Date();
-    const arrivalTime = buildArrivalDate(config.arrivalTime);
 
-    if (!isInMonitoringWindow(now, arrivalTime)) {
-      logger.info('Outside monitoring window — skipping traffic check');
-      return BackgroundFetch.BackgroundFetchResult.NoData;
-    }
-
+    // Day-of-week guard: skip days the alarm isn't active
     const todayDow = now.getDay(); // 0=Sun … 6=Sat
     if (config.daysOfWeek.length > 0 && !config.daysOfWeek.includes(todayDow)) {
       logger.info(`Today (${todayDow}) not in daysOfWeek — skipping traffic check`);
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
-    const checkpoint = resolveCheckpoint(now, arrivalTime);
+    // Use the currently scheduled wake time as the anchor for all window/checkpoint
+    // calculations. All checks are relative to wake time, not arrival time, so that
+    // the monitoring window is consistent regardless of journey length.
+    const state = AlarmStorage.readState();
+    const wakeTime = state.lastCalculatedWakeTime
+      ? new Date(state.lastCalculatedWakeTime)
+      : null;
+
+    if (!wakeTime) {
+      logger.info('No scheduled wake time — skipping traffic check');
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
+    if (!isInMonitoringWindow(now, wakeTime)) {
+      logger.info('Outside monitoring window — skipping traffic check');
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
+    const checkpoint = resolveCheckpoint(now, wakeTime);
     if (!checkpoint) {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
@@ -54,8 +67,7 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
       accuracy: Location.Accuracy.Balanced,
     });
 
-    const routingPreference =
-      checkpoint <= 60 ? 'TRAFFIC_AWARE' : 'TRAFFIC_UNAWARE';
+    const arrivalTime = buildArrivalDate(config.arrivalTime);
 
     let trafficResult;
     try {
@@ -67,31 +79,27 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
           destinationLongitude: config.destination.longitude,
           arrivalTime: arrivalTime.toISOString(),
           travelMode: 'DRIVE',
-          routingPreference,
+          routingPreference: 'TRAFFIC_AWARE',
         },
         checkpoint
       );
     } catch (err) {
       if (err instanceof RoutesFetchError) {
         logger.warn('Routes API failed in background task — failsafe remains active', err.message);
-        // Do NOT cancel the failsafe notification — let it fire as-is
         return BackgroundFetch.BackgroundFetchResult.Failed;
       }
       throw err;
     }
 
-    const newWakeTime = calculateWakeTime(
+    const rawWake = calculateWakeTime(
       arrivalTime,
       trafficResult.durationSeconds,
       config.prepMinutes
     );
+    // Clamp so we never schedule a notification in the past
+    const newWakeTime = new Date(Math.max(rawWake.getTime(), Date.now() + 10_000));
 
-    const state = AlarmStorage.readState();
-    const currentWakeTime = state.lastCalculatedWakeTime
-      ? new Date(state.lastCalculatedWakeTime)
-      : null;
-
-    if (!currentWakeTime || shouldReschedule(currentWakeTime, newWakeTime)) {
+    if (shouldReschedule(wakeTime, newWakeTime)) {
       await NotificationService.rescheduleAlarm(config.id, newWakeTime, trafficResult);
       AlarmStorage.writeState({
         lastCalculatedWakeTime: newWakeTime.toISOString(),
@@ -102,6 +110,7 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
         `Alarm rescheduled to ${newWakeTime.toISOString()} (traffic: ${trafficResult.durationSeconds}s)`
       );
     } else {
+      AlarmStorage.writeState({ lastTrafficCheckAt: new Date().toISOString() });
       logger.info('Wake time unchanged — no reschedule needed');
     }
 

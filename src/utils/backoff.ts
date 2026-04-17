@@ -1,5 +1,6 @@
 import {
   BACKOFF_OFFSETS_MS,
+  MONITORING_WINDOW_MS,
   RESCHEDULE_THRESHOLD_MS,
 } from '@/src/constants/alarm';
 import type { TrafficCheckpoint } from '@/src/types/traffic';
@@ -28,38 +29,37 @@ export function shouldReschedule(currentWakeTime: Date, newWakeTime: Date): bool
 }
 
 /**
- * Returns the most imminent unprocessed checkpoint given the current time
- * and arrival time, or null if all checkpoints have passed.
+ * Returns the active checkpoint (60 / 30 / 10 min) based on how far away the
+ * scheduled wake time is, or null if the wake time has already passed or is
+ * more than 60 minutes away (outside the monitoring window).
  *
- * Checkpoints are returned in descending order (90 → 60 → 30 → 15).
- * The "next" checkpoint is the largest offset that is still in the future
- * relative to the arrival time, but whose window has already opened
- * (i.e. now >= arrivalTime - offset).
+ * All checkpoints are relative to the *wake time*, not the arrival time.
+ * This means traffic checks start at T_wake − 60 min regardless of journey length.
  */
 export function resolveCheckpoint(
   now: Date,
-  arrivalTime: Date
+  wakeTime: Date
 ): TrafficCheckpoint | null {
-  const msUntilArrival = arrivalTime.getTime() - now.getTime();
+  const msUntilWake = wakeTime.getTime() - now.getTime();
 
-  if (msUntilArrival <= 0) return null; // arrival has passed
+  if (msUntilWake <= 0) return null; // wake time has already passed
 
-  const checkpoints: TrafficCheckpoint[] = [90, 60, 30, 15];
+  const checkpoints: TrafficCheckpoint[] = [60, 30, 10];
 
   for (const cp of checkpoints) {
-    if (msUntilArrival <= BACKOFF_OFFSETS_MS[cp]) {
+    if (msUntilWake <= BACKOFF_OFFSETS_MS[cp]) {
       return cp;
     }
   }
 
-  return null; // more than 90 minutes away — not yet in monitoring window
+  return null; // more than 60 minutes away — not yet in monitoring window
 }
 
 /**
- * Returns true if the given time falls within the monitoring window
- * (between T_arrival - 90min and T_arrival).
+ * Returns true if now is within MONITORING_WINDOW_MS (60 min) of the
+ * scheduled wake time. All window logic is wake-time relative.
  */
-export function isInMonitoringWindow(now: Date, arrivalTime: Date): boolean {
-  const ms = arrivalTime.getTime() - now.getTime();
-  return ms > 0 && ms <= BACKOFF_OFFSETS_MS[90];
+export function isInMonitoringWindow(now: Date, wakeTime: Date): boolean {
+  const ms = wakeTime.getTime() - now.getTime();
+  return ms > 0 && ms <= MONITORING_WINDOW_MS;
 }

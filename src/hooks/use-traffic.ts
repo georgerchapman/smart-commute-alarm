@@ -2,33 +2,38 @@ import { useCallback } from 'react';
 import { useTrafficStore } from '@/src/stores/traffic-store';
 import { useAlarmStore } from '@/src/stores/alarm-store';
 import { fetchRoute, RoutesFetchError } from '@/src/services/maps/routes-api';
+import { NotificationService } from '@/src/services/notifications/notification-service';
 import { buildArrivalDate } from '@/src/utils/time';
-import { FALLBACK_COMMUTE_SECONDS } from '@/src/constants/alarm';
+import { calculateWakeTime, shouldReschedule } from '@/src/utils/backoff';
 import type { TrafficResult } from '@/src/types/traffic';
 import { logger } from '@/src/utils/logger';
 
 export function useTraffic() {
   const trafficStore = useTrafficStore();
-  const alarmConfig = useAlarmStore((s) => s.config);
 
   const refresh = useCallback(
     async (
       originLat: number,
       originLng: number
     ): Promise<TrafficResult | null> => {
-      if (!alarmConfig) return null;
+      // Read alarm state directly from the store (not a React selector) so we
+      // always get the latest values even when called immediately after setEnabled.
+      const { config, lastCalculatedWakeTime, setLastCalculatedWakeTime } =
+        useAlarmStore.getState();
+
+      if (!config) return null;
 
       trafficStore.setFetching(true);
       trafficStore.setError(null);
 
       try {
-        const arrivalTime = buildArrivalDate(alarmConfig.arrivalTime);
+        const arrivalTime = buildArrivalDate(config.arrivalTime);
         const result = await fetchRoute(
           {
             originLatitude: originLat,
             originLongitude: originLng,
-            destinationLatitude: alarmConfig.destination.latitude,
-            destinationLongitude: alarmConfig.destination.longitude,
+            destinationLatitude: config.destination.latitude,
+            destinationLongitude: config.destination.longitude,
             arrivalTime: arrivalTime.toISOString(),
             travelMode: 'DRIVE',
             routingPreference: 'TRAFFIC_AWARE',
@@ -36,6 +41,25 @@ export function useTraffic() {
           60
         );
         trafficStore.setResult(result);
+
+        // When the alarm is active, compare the live wake time against the
+        // currently scheduled one and reschedule if it has moved meaningfully.
+        if (config.enabled) {
+          const rawWake = calculateWakeTime(arrivalTime, result.durationSeconds, config.prepMinutes);
+          const liveWake = new Date(Math.max(rawWake.getTime(), Date.now() + 10_000));
+          const currentWake = lastCalculatedWakeTime ? new Date(lastCalculatedWakeTime) : null;
+
+          if (!currentWake || shouldReschedule(currentWake, liveWake)) {
+            await NotificationService.rescheduleAlarm(config.id, liveWake, result);
+            setLastCalculatedWakeTime(liveWake.toISOString());
+            logger.info(
+              `Foreground traffic: alarm rescheduled to ${liveWake.toISOString()} (${result.durationSeconds}s)`
+            );
+          } else {
+            logger.debug('Foreground traffic: wake time unchanged, no reschedule needed');
+          }
+        }
+
         return result;
       } catch (err) {
         const message =
@@ -47,7 +71,7 @@ export function useTraffic() {
         trafficStore.setFetching(false);
       }
     },
-    [alarmConfig, trafficStore]
+    [trafficStore]
   );
 
   return {

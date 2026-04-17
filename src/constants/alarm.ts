@@ -1,10 +1,11 @@
 import type { TrafficCheckpoint } from '@/src/types/traffic';
 
+// Traffic check checkpoints — minutes before the scheduled wake time.
+// Paid tiers will allow more frequent / customisable intervals (to be designed).
 export const BACKOFF_OFFSETS_MS: Record<TrafficCheckpoint, number> = {
-  90: 90 * 60 * 1000,
   60: 60 * 60 * 1000,
   30: 30 * 60 * 1000,
-  15: 15 * 60 * 1000,
+  10: 10 * 60 * 1000,
 };
 
 // Minimum change in wake time that warrants rescheduling the alarm notification
@@ -19,8 +20,8 @@ export const MIN_SNOOZE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 // Default prep time if user hasn't configured one
 export const DEFAULT_PREP_MINUTES = 30;
 
-// How far in advance to start the monitoring window
-export const MONITORING_WINDOW_MS = BACKOFF_OFFSETS_MS[90];
+// Monitoring window: start checking 60 minutes before the scheduled wake time
+export const MONITORING_WINDOW_MS = BACKOFF_OFFSETS_MS[60];
 
 // Background fetch interval hint (OS may fire less frequently on iOS)
 export const BACKGROUND_FETCH_INTERVAL_SECONDS = 15 * 60; // 15 minutes

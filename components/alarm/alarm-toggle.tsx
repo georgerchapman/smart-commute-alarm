@@ -1,6 +1,8 @@
 import { Switch, View, StyleSheet } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import { useThemeColor } from '@/hooks/use-theme-color';
+
+// iOS system green — matches the Clock app's alarm toggle colour
+const ALARM_GREEN = '#34C759';
 
 type Props = {
   enabled: boolean;
@@ -9,8 +11,6 @@ type Props = {
 };
 
 export function AlarmToggle({ enabled, onToggle, disabled = false }: Props) {
-  const tint = useThemeColor({}, 'tint');
-
   return (
     <View style={styles.row}>
       <ThemedText type="defaultSemiBold">
@@ -20,7 +20,7 @@ export function AlarmToggle({ enabled, onToggle, disabled = false }: Props) {
         value={enabled}
         onValueChange={onToggle}
         disabled={disabled}
-        trackColor={{ true: tint }}
+        trackColor={{ true: ALARM_GREEN }}
         thumbColor="#fff"
       />
     </View>

@@ -79,7 +79,7 @@ async function doFetch(request: RouteRequest, apiKey: string): Promise<TrafficRe
     distanceMeters: route.distanceMeters,
     polylineEncoded: route.polyline?.encodedPolyline,
     fetchedAt: new Date().toISOString(),
-    checkpoint: 15, // caller overrides this
+    checkpoint: 10, // caller overrides this
     isFailsafe: false,
   };
 }
