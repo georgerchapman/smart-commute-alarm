@@ -14,6 +14,8 @@ type Props = {
   wakeTimeIso: string | null;
   trafficResult: TrafficResult | null;
   isFetchingTraffic: boolean;
+  trafficLastFetchedAt?: string | null;
+  nominalDurationSeconds?: number | null;
   onToggle: (enabled: boolean) => void;
   onEditArrivalTime: () => void;
 };
@@ -24,6 +26,8 @@ export function AlarmCard({
   wakeTimeIso,
   trafficResult,
   isFetchingTraffic,
+  trafficLastFetchedAt,
+  nominalDurationSeconds,
   onToggle,
   onEditArrivalTime,
 }: Props) {
@@ -41,7 +45,12 @@ export function AlarmCard({
 
       <CountdownDisplay wakeTimeIso={config.enabled ? wakeTimeIso : null} />
 
-      <TrafficStatusBadge result={trafficResult} isFetching={isFetchingTraffic} />
+      <TrafficStatusBadge
+        result={trafficResult}
+        isFetching={isFetchingTraffic}
+        nominalDurationSeconds={nominalDurationSeconds}
+        lastFetchedAt={trafficLastFetchedAt}
+      />
 
       <View style={[styles.divider, { backgroundColor: border }]} />
 

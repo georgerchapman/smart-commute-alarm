@@ -38,6 +38,12 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
+    const todayDow = now.getDay(); // 0=Sun … 6=Sat
+    if (config.daysOfWeek.length > 0 && !config.daysOfWeek.includes(todayDow)) {
+      logger.info(`Today (${todayDow}) not in daysOfWeek — skipping traffic check`);
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
     const checkpoint = resolveCheckpoint(now, arrivalTime);
     if (!checkpoint) {
       return BackgroundFetch.BackgroundFetchResult.NoData;

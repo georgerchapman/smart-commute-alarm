@@ -26,7 +26,8 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const initAlarm = useAlarmStore((s) => s.initFromStorage);
-  const dismissAlarm = useAlarmStore((s) => s.dismiss);
+  const performDismiss = useAlarmStore((s) => s.performDismiss);
+  const setAlarmFiring = useAlarmStore((s) => s.setFiring);
   const setSubscriptionStatus = useSubscriptionStore((s) => s.setStatus);
 
   // Bootstrap all services on mount
@@ -63,20 +64,23 @@ export default function RootLayout() {
       const payload = notification.request.content.data as unknown as NotificationPayload;
 
       if (actionIdentifier === 'DISMISS') {
-        dismissAlarm();
+        // Cancel remaining burst, record history, reschedule for next occurrence
+        performDismiss().catch(() => {});
       } else if (actionIdentifier === 'SNOOZE') {
-        // Snooze is handled by the alarm store — navigate to the alarm screen
+        // Show the in-app firing overlay so the user can snooze properly
+        setAlarmFiring();
         router.push('/');
       } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-        // User tapped the notification body — open alarm screen
+        // User tapped the notification body — show firing overlay
         if (payload?.type === 'alarm_fire' || payload?.type === 'snooze_recheck') {
+          setAlarmFiring();
           router.push('/');
         }
       }
     });
 
     return () => sub.remove();
-  }, [dismissAlarm, router]);
+  }, [performDismiss, setAlarmFiring, router]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -10,7 +10,7 @@ const uuidv4 = (): string =>
       });
 import type { AlarmConfig, AlarmState, AlarmStatus } from '@/src/types/alarm';
 import { AlarmStorage, HistoryStorage } from '@/src/services/storage/alarm-storage';
-import { buildArrivalDate } from '@/src/utils/time';
+import { buildArrivalDate, nextOccurrenceDate } from '@/src/utils/time';
 import {
   calculateWakeTime,
   shouldReschedule,
@@ -19,7 +19,9 @@ import {
   DEFAULT_PREP_MINUTES,
   MAX_SNOOZE_COUNT,
   MIN_SNOOZE_INTERVAL_MS,
+  FALLBACK_COMMUTE_SECONDS,
 } from '@/src/constants/alarm';
+import { NotificationService } from '@/src/services/notifications/notification-service';
 import { logger } from '@/src/utils/logger';
 
 interface AlarmStore extends AlarmState {
@@ -28,9 +30,14 @@ interface AlarmStore extends AlarmState {
   setConfig: (partial: Partial<AlarmConfig>) => void;
   setEnabled: (enabled: boolean) => void;
   setStatus: (status: AlarmStatus) => void;
+  setFiring: () => void;
   setLastCalculatedWakeTime: (isoString: string) => void;
   snooze: (fetchLiveDuration: () => Promise<number>) => Promise<void>;
   dismiss: () => void;
+  /** Cancel the notification burst, record history, then reschedule or disable. */
+  performDismiss: (lastTrafficDurationSeconds?: number) => Promise<void>;
+  /** Schedule the alarm for its next weekly occurrence (or disable if one-off). */
+  rescheduleForNextDay: (durationSeconds?: number) => Promise<void>;
   reset: () => void;
 
   // Phase 2 extension: briefingContent will be added here
@@ -99,6 +106,81 @@ export const useAlarmStore = create<AlarmStore>()(
         lastCalculatedWakeTime: isoString,
         lastTrafficCheckAt: new Date().toISOString(),
       });
+    },
+
+    setFiring() {
+      AlarmStorage.writeState({ status: 'firing' });
+      set({ status: 'firing' });
+    },
+
+    async performDismiss(lastTrafficDurationSeconds?: number) {
+      const { config, snoozeCount, lastCalculatedWakeTime } = get();
+      if (!config) return;
+
+      // Cancel any remaining burst notifications before they ring
+      await NotificationService.cancelAlarm(config.id);
+
+      // Record history entry
+      const firedAt = new Date().toISOString();
+      if (lastCalculatedWakeTime) {
+        HistoryStorage.append({
+          id: uuidv4(),
+          date: firedAt.slice(0, 10),
+          configuredArrivalTime: buildArrivalDate(config.arrivalTime).toISOString(),
+          actualWakeTime: lastCalculatedWakeTime,
+          trafficDurationSeconds: lastTrafficDurationSeconds ?? 0,
+          prepMinutes: config.prepMinutes,
+          outcome: snoozeCount > 0 ? 'snoozed' : 'dismissed',
+          snoozeCount,
+        });
+      }
+
+      AlarmStorage.writeState({ snoozeCount: 0, todayFiredAt: firedAt });
+      set({ snoozeCount: 0, todayFiredAt: firedAt });
+
+      await get().rescheduleForNextDay(lastTrafficDurationSeconds);
+    },
+
+    async rescheduleForNextDay(durationSeconds?: number) {
+      const { config } = get();
+      if (!config) return;
+
+      if (config.daysOfWeek.length === 0) {
+        // One-off alarm — disable entirely after it fires
+        const updated = { ...config, enabled: false, updatedAt: new Date().toISOString() };
+        AlarmStorage.writeConfig(updated);
+        AlarmStorage.writeState({ status: 'idle', lastCalculatedWakeTime: null });
+        set({ config: updated, status: 'idle', lastCalculatedWakeTime: null });
+        logger.info('One-off alarm dismissed and disabled');
+        return;
+      }
+
+      const nextArrival = nextOccurrenceDate(config.daysOfWeek, config.arrivalTime);
+      if (!nextArrival) return;
+
+      const duration = durationSeconds ?? FALLBACK_COMMUTE_SECONDS;
+      const rawWake = calculateWakeTime(nextArrival, duration, config.prepMinutes);
+      const nextWake = new Date(Math.max(rawWake.getTime(), Date.now() + 10_000));
+
+      await NotificationService.scheduleAlarm(config.id, nextWake, {
+        type: 'alarm_fire',
+        alarmId: config.id,
+        wakeTime: nextWake.toISOString(),
+      });
+
+      const now = new Date().toISOString();
+      AlarmStorage.writeState({
+        status: 'scheduled',
+        lastCalculatedWakeTime: nextWake.toISOString(),
+        lastTrafficCheckAt: now,
+        snoozeCount: 0,
+      });
+      set({
+        status: 'scheduled',
+        lastCalculatedWakeTime: nextWake.toISOString(),
+        lastTrafficCheckAt: now,
+      });
+      logger.info(`Alarm rescheduled for next occurrence: ${nextWake.toISOString()}`);
     },
 
     async snooze(fetchLiveDuration: () => Promise<number>) {

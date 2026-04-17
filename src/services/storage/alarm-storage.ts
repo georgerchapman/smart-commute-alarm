@@ -88,17 +88,28 @@ export const AlarmStorage = {
     storage.set(KEYS.STATE, JSON.stringify({ ...current, ...state }));
   },
 
-  // ─── Scheduled Notification ID ────────────────────────────────────────────
+  // ─── Scheduled Notification IDs ──────────────────────────────────────────
+  // Stored as a JSON array to support the multi-notification burst pattern.
 
-  readScheduledNotificationId(alarmId: string): string | null {
-    return storage.getString(`${KEYS.SCHEDULED_NOTIFICATION_PREFIX}${alarmId}`) ?? null;
+  readScheduledNotificationIds(alarmId: string): string[] {
+    const raw = storage.getString(`${KEYS.SCHEDULED_NOTIFICATION_PREFIX}${alarmId}`);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as string[];
+      // Migrate legacy single-string value
+      if (typeof parsed === 'string') return [parsed];
+      return [];
+    } catch {
+      return [];
+    }
   },
 
-  writeScheduledNotificationId(alarmId: string, notificationId: string): void {
-    storage.set(`${KEYS.SCHEDULED_NOTIFICATION_PREFIX}${alarmId}`, notificationId);
+  writeScheduledNotificationIds(alarmId: string, notificationIds: string[]): void {
+    storage.set(`${KEYS.SCHEDULED_NOTIFICATION_PREFIX}${alarmId}`, JSON.stringify(notificationIds));
   },
 
-  clearScheduledNotificationId(alarmId: string): void {
+  clearScheduledNotificationIds(alarmId: string): void {
     storage.remove(`${KEYS.SCHEDULED_NOTIFICATION_PREFIX}${alarmId}`);
   },
 

@@ -8,6 +8,7 @@ import {
   setMilliseconds,
   addDays,
   isBefore,
+  startOfDay,
 } from 'date-fns';
 
 /**
@@ -64,4 +65,38 @@ export function formatDuration(seconds: number): string {
  */
 export function addMs(date: Date, ms: number): Date {
   return addMilliseconds(date, ms);
+}
+
+/**
+ * Find the next calendar date (starting tomorrow) where the day-of-week is in
+ * daysOfWeek, and set the time to the given arrivalTime. Returns null if
+ * daysOfWeek is empty (one-off alarm).
+ */
+export function nextOccurrenceDate(
+  daysOfWeek: number[],
+  arrivalTime: { hour: number; minute: number },
+  from: Date = new Date()
+): Date | null {
+  if (daysOfWeek.length === 0) return null;
+  for (let offset = 1; offset <= 7; offset++) {
+    const candidate = startOfDay(addDays(from, offset));
+    if (daysOfWeek.includes(candidate.getDay())) {
+      return setMilliseconds(
+        setSeconds(setMinutes(setHours(candidate, arrivalTime.hour), arrivalTime.minute), 0),
+        0
+      );
+    }
+  }
+  return null; // unreachable when daysOfWeek is non-empty
+}
+
+/**
+ * Format an ISO timestamp as a human-readable relative time, e.g. "just now", "3 min ago".
+ */
+export function formatRelativeTime(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin === 1) return '1 min ago';
+  return `${diffMin} min ago`;
 }

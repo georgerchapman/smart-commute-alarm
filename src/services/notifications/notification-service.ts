@@ -4,6 +4,7 @@ import type { NotificationPayload } from '@/src/types/notification';
 import type { TrafficResult } from '@/src/types/traffic';
 import { AlarmStorage } from '@/src/services/storage/alarm-storage';
 import { formatWakeTime, formatDuration } from '@/src/utils/time';
+import { ALARM_BURST_COUNT, ALARM_BURST_INTERVAL_MS } from '@/src/constants/alarm';
 import { logger } from '@/src/utils/logger';
 
 // Configure how notifications are handled when the app is in the foreground
@@ -54,33 +55,61 @@ function buildAlarmBody(payload: NotificationPayload): string {
 }
 
 export const NotificationService = {
+  /**
+   * Schedule a burst of ALARM_BURST_COUNT notifications starting at wakeTime,
+   * spaced ALARM_BURST_INTERVAL_MS apart. This simulates a repeating alarm ring
+   * since a single iOS notification fires once and then goes silent.
+   *
+   * The first notification uses the primary alarm content; subsequent "ring"
+   * notifications use a shorter repeat title so the lock screen stays clear.
+   */
   async scheduleAlarm(
     alarmId: string,
     wakeTime: Date,
     payload: NotificationPayload
   ): Promise<string> {
-    // Always cancel existing notification before scheduling a new one
+    // Always cancel any existing burst before scheduling a new one
     await this.cancelAlarm(alarmId);
 
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Wake up — ${formatWakeTime(wakeTime)}`,
-        body: buildAlarmBody(payload),
-        data: payload as unknown as Record<string, unknown>,
-        sound: true,
-        ...(Platform.OS === 'ios'
-          ? { categoryIdentifier: ALARM_CATEGORY_ID }
-          : {}),
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: wakeTime,
-      },
-    });
+    const ids: string[] = [];
+    const baseContent = {
+      data: payload as unknown as Record<string, unknown>,
+      sound: true,
+      ...(Platform.OS === 'ios' ? { categoryIdentifier: ALARM_CATEGORY_ID } : {}),
+    };
 
-    AlarmStorage.writeScheduledNotificationId(alarmId, notificationId);
-    logger.info(`Alarm scheduled at ${wakeTime.toISOString()} (id: ${notificationId})`);
-    return notificationId;
+    // iOS requires trigger dates to be strictly in the future.
+    // Clamp the first ring to at least 2 seconds from now so scheduling
+    // never fails even when the computed wake time is already in the past.
+    const MIN_SCHEDULE_AHEAD_MS = 2_000;
+    const now = Date.now();
+    const firstRing = Math.max(wakeTime.getTime(), now + MIN_SCHEDULE_AHEAD_MS);
+
+    for (let i = 0; i < ALARM_BURST_COUNT; i++) {
+      const ringTime = new Date(firstRing + i * ALARM_BURST_INTERVAL_MS);
+      const isFirst = i === 0;
+
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          ...baseContent,
+          title: isFirst
+            ? `Wake up — ${formatWakeTime(wakeTime)}`
+            : `Still time to get up — ${formatWakeTime(wakeTime)}`,
+          body: isFirst ? buildAlarmBody(payload) : 'Your alarm is still ringing.',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: ringTime,
+        },
+      });
+      ids.push(id);
+    }
+
+    AlarmStorage.writeScheduledNotificationIds(alarmId, ids);
+    logger.info(
+      `Alarm burst of ${ALARM_BURST_COUNT} scheduled from ${wakeTime.toISOString()} (ids: ${ids[0]}…)`
+    );
+    return ids[0];
   },
 
   async rescheduleAlarm(
@@ -97,11 +126,13 @@ export const NotificationService = {
   },
 
   async cancelAlarm(alarmId: string): Promise<void> {
-    const existingId = AlarmStorage.readScheduledNotificationId(alarmId);
-    if (existingId) {
-      await Notifications.cancelScheduledNotificationAsync(existingId);
-      AlarmStorage.clearScheduledNotificationId(alarmId);
-      logger.info(`Alarm notification cancelled (id: ${existingId})`);
+    const existingIds = AlarmStorage.readScheduledNotificationIds(alarmId);
+    if (existingIds.length > 0) {
+      await Promise.all(
+        existingIds.map((id) => Notifications.cancelScheduledNotificationAsync(id))
+      );
+      AlarmStorage.clearScheduledNotificationIds(alarmId);
+      logger.info(`Alarm burst cancelled (${existingIds.length} notifications)`);
     }
   },
 

@@ -1,21 +1,63 @@
 import { View, ScrollView, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useCountdown } from '@/src/hooks/use-countdown';
+import * as Location from 'expo-location';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AlarmCard } from '@/components/alarm/alarm-card';
 import { DestinationCard } from '@/components/destination/destination-card';
 import { useAlarm } from '@/src/hooks/use-alarm';
 import { useTraffic } from '@/src/hooks/use-traffic';
+import { useNominalJourney } from '@/src/hooks/use-nominal-journey';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { logger } from '@/src/utils/logger';
 
 export default function AlarmScreen() {
-  const { config, status, lastCalculatedWakeTime, snoozeCount, enableAlarm, disableAlarm, updateConfig, snooze, dismiss } = useAlarm();
-  const { lastResult, isFetching } = useTraffic();
+  const router = useRouter();
+  const { config, status, lastCalculatedWakeTime, snoozeCount, enableAlarm, disableAlarm, updateConfig, snooze, dismiss, setFiring } = useAlarm();
+  const { lastResult, lastFetchedAt, isFetching, refresh: refreshTraffic } = useTraffic();
+  const { durationSeconds: nominalSeconds } = useNominalJourney();
   const tint = useThemeColor({}, 'tint');
+  const tintText = useThemeColor({ light: '#fff', dark: '#000' }, 'tint');
 
   const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Detect when the countdown reaches zero and the alarm should start firing.
+  // Only active when the alarm is in a schedulable state so that the initial
+  // isExpired=true (from a null wakeTime) does not trigger the overlay.
+  const alarmIsActive =
+    config?.enabled && (status === 'scheduled' || status === 'monitoring' || status === 'snoozed');
+  const { isExpired } = useCountdown(alarmIsActive ? lastCalculatedWakeTime : null);
+
+  useEffect(() => {
+    if (isExpired && alarmIsActive && lastCalculatedWakeTime) {
+      setFiring();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpired]);
+
+  // Auto-refresh live traffic whenever the screen comes into focus and alarm is enabled
+  useFocusEffect(
+    useCallback(() => {
+      if (!config?.enabled) return;
+      (async () => {
+        try {
+          const { status: locStatus } = await Location.getForegroundPermissionsAsync();
+          if (locStatus !== 'granted') return;
+          const pos = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          await refreshTraffic(pos.coords.latitude, pos.coords.longitude);
+        } catch (err) {
+          logger.warn('Home screen traffic refresh failed', err);
+        }
+      })();
+    }, [config?.enabled, refreshTraffic])
+  );
 
   // Build a Date object from the stored hour/minute for the picker
   const pickerDate = (() => {
@@ -37,7 +79,7 @@ export default function AlarmScreen() {
 
   const handleToggle = async (enabled: boolean) => {
     if (enabled) {
-      await enableAlarm();
+      await enableAlarm(nominalSeconds ?? undefined);
     } else {
       await disableAlarm();
     }
@@ -79,7 +121,7 @@ export default function AlarmScreen() {
               style={[styles.actionBtn, { backgroundColor: tint }]}
               onPress={dismiss}
             >
-              <ThemedText type="defaultSemiBold" style={{ color: '#fff' }}>
+              <ThemedText type="defaultSemiBold" style={{ color: tintText }}>
                 Dismiss
               </ThemedText>
             </TouchableOpacity>
@@ -103,6 +145,8 @@ export default function AlarmScreen() {
           wakeTimeIso={lastCalculatedWakeTime}
           trafficResult={lastResult}
           isFetchingTraffic={isFetching}
+          trafficLastFetchedAt={lastFetchedAt}
+          nominalDurationSeconds={nominalSeconds}
           onToggle={handleToggle}
           onEditArrivalTime={() => setShowTimePicker(true)}
         />
@@ -120,7 +164,7 @@ export default function AlarmScreen() {
 
         <DestinationCard
           destination={config.destination}
-          onPress={() => {/* Phase 2: navigate to destination picker */}}
+          onPress={() => router.push('/(tabs)/settings')}
         />
       </ScrollView>
 

@@ -52,6 +52,7 @@ export function useTraffic() {
 
   return {
     lastResult: trafficStore.lastResult,
+    lastFetchedAt: trafficStore.lastFetchedAt,
     isFetching: trafficStore.isFetching,
     error: trafficStore.error,
     refresh,

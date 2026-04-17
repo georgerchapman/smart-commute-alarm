@@ -30,3 +30,9 @@ export const ROUTE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Fallback static commute duration when no prior data is available
 export const FALLBACK_COMMUTE_SECONDS = 45 * 60; // 45 minutes
+
+// Number of staggered notifications scheduled per alarm to simulate a repeating ring
+export const ALARM_BURST_COUNT = 8;
+
+// Gap between each burst notification (30 seconds)
+export const ALARM_BURST_INTERVAL_MS = 30_000;

@@ -19,6 +19,7 @@ export default function SettingsScreen() {
   const { statuses, check } = usePermissions();
   const { isPro, restore } = useSubscription();
   const tint = useThemeColor({}, 'tint');
+  const tintText = useThemeColor({ light: '#fff', dark: '#000' }, 'tint');
   const border = useThemeColor({}, 'border');
   const cardBg = useThemeColor({}, 'cardBackground');
 
@@ -43,6 +44,17 @@ export default function SettingsScreen() {
           <PrepTimeSlider
             value={config?.prepMinutes ?? 30}
             onChange={(prepMinutes) => updateConfig({ prepMinutes })}
+          />
+        </Section>
+
+        {/* Schedule */}
+        <Section title="Schedule" border={border} bg={cardBg}>
+          <DayPicker
+            value={config?.daysOfWeek ?? [1, 2, 3, 4, 5]}
+            onChange={(daysOfWeek) => updateConfig({ daysOfWeek })}
+            tint={tint}
+            tintText={tintText}
+            border={border}
           />
         </Section>
 
@@ -88,7 +100,7 @@ export default function SettingsScreen() {
               style={[styles.proBtn, { backgroundColor: tint }]}
               onPress={() => router.push('/paywall')}
             >
-              <ThemedText style={styles.proBtnText}>Go Pro</ThemedText>
+              <ThemedText style={[styles.proBtnText, { color: tintText }]}>Go Pro</ThemedText>
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={restore} style={styles.restoreBtn}>
@@ -104,6 +116,52 @@ export default function SettingsScreen() {
         </ThemedText>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+function DayPicker({
+  value,
+  onChange,
+  tint,
+  tintText,
+  border,
+}: {
+  value: number[];
+  onChange: (days: number[]) => void;
+  tint: string;
+  tintText: string;
+  border: string;
+}) {
+  const toggle = (day: number) => {
+    const next = value.includes(day) ? value.filter((d) => d !== day) : [...value, day].sort();
+    onChange(next);
+  };
+
+  return (
+    <View style={styles.dayRow}>
+      {DAY_LABELS.map((label, day) => {
+        const active = value.includes(day);
+        return (
+          <TouchableOpacity
+            key={day}
+            onPress={() => toggle(day)}
+            style={[
+              styles.dayChip,
+              { borderColor: tint },
+              active && { backgroundColor: tint },
+            ]}
+          >
+            <ThemedText
+              style={[styles.dayChipText, active && { color: tintText }]}
+            >
+              {label}
+            </ThemedText>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 
@@ -146,13 +204,31 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 4,
   },
+  dayRow: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'space-between',
+  },
+  dayChip: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dayChipTextActive: {},
   proLabel: { fontSize: 15 },
   proBtn: {
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  proBtnText: { color: '#fff', fontWeight: '600' },
+  proBtnText: { fontWeight: '600' },
   restoreBtn: { paddingTop: 10, alignItems: 'center' },
   version: {
     textAlign: 'center',

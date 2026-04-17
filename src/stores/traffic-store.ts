@@ -3,6 +3,7 @@ import type { TrafficResult } from '@/src/types/traffic';
 
 interface TrafficStore {
   lastResult: TrafficResult | null;
+  lastFetchedAt: string | null; // ISO 8601 — when the last successful fetch completed
   isFetching: boolean;
   error: string | null;
   setResult: (result: TrafficResult) => void;
@@ -12,11 +13,12 @@ interface TrafficStore {
 
 export const useTrafficStore = create<TrafficStore>()((set) => ({
   lastResult: null,
+  lastFetchedAt: null,
   isFetching: false,
   error: null,
 
   setResult(result: TrafficResult) {
-    set({ lastResult: result, error: null });
+    set({ lastResult: result, lastFetchedAt: new Date().toISOString(), error: null });
   },
 
   setFetching(fetching: boolean) {
