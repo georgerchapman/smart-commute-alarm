@@ -1,3 +1,8 @@
+// Force UTC so all date-fns setHours / getDay calls are timezone-deterministic.
+// Without this, tests written with UTC expectations fail in BST or any other
+// non-UTC locale because setHours() operates in the process's local timezone.
+process.env.TZ = 'UTC';
+
 module.exports = {
   preset: 'jest-expo',
   testEnvironment: 'node',
