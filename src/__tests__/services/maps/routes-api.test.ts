@@ -13,6 +13,11 @@ jest.mock('@/src/utils/logger', () => ({
     warn: jest.fn(),
     error: jest.fn(),
     debug: jest.fn(),
+    ui: jest.fn(),
+    alarm: jest.fn(),
+    traffic: jest.fn(),
+    notif: jest.fn(),
+    bg: jest.fn(),
   },
 }));
 

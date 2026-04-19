@@ -37,6 +37,7 @@ export default function AlarmScreen() {
 
   useEffect(() => {
     if (isExpired && alarmIsActive && lastCalculatedWakeTime) {
+      logger.ui(`Countdown expired — transitioning status → firing (wakeTime: ${lastCalculatedWakeTime})`);
       setFiring();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,28 +52,42 @@ export default function AlarmScreen() {
   // that it matches when the background task starts checking.
   useFocusEffect(
     useCallback(() => {
-      if (!config?.enabled || !lastCalculatedWakeTime) return;
+      if (!config?.enabled || !lastCalculatedWakeTime) {
+        logger.debug(`[index] Screen focused — traffic check skipped (alarm ${config?.enabled ? 'enabled but no wake time' : 'not enabled'})`);
+        return;
+      }
 
-      // Outside the monitoring window — nothing useful to show yet
       const wakeDate = new Date(lastCalculatedWakeTime);
-      if (!isInMonitoringWindow(new Date(), wakeDate)) return;
+      const now = new Date();
+      const msUntilWake = wakeDate.getTime() - now.getTime();
 
-      // Recently fetched — skip until the cooldown has elapsed
+      if (!isInMonitoringWindow(now, wakeDate)) {
+        logger.debug(`[index] Screen focused — outside monitoring window (${Math.round(msUntilWake / 60000)} min until wake, window opens at 60 min)`);
+        return;
+      }
+
       if (
         lastFetchedAt &&
         Date.now() - new Date(lastFetchedAt).getTime() < FOREGROUND_TRAFFIC_MIN_INTERVAL_MS
       ) {
-        logger.debug('Foreground traffic refresh skipped — within cooldown window');
+        const cooldownRemaining = Math.round((FOREGROUND_TRAFFIC_MIN_INTERVAL_MS - (Date.now() - new Date(lastFetchedAt).getTime())) / 1000);
+        logger.debug(`[index] Screen focused — within cooldown (${cooldownRemaining}s remaining before next fetch)`);
         return;
       }
+
+      logger.ui(`[index] Screen focused — triggering foreground traffic refresh (${Math.round(msUntilWake / 60000)} min until wake)`);
 
       (async () => {
         try {
           const { status: locStatus } = await Location.getForegroundPermissionsAsync();
-          if (locStatus !== 'granted') return;
+          if (locStatus !== 'granted') {
+            logger.warn('[index] Location permission not granted — skipping traffic refresh');
+            return;
+          }
           const pos = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
+          logger.debug(`[index] Location acquired: ${pos.coords.latitude.toFixed(4)},${pos.coords.longitude.toFixed(4)}`);
           await refreshTraffic(pos.coords.latitude, pos.coords.longitude);
         } catch (err) {
           logger.warn('Home screen traffic refresh failed', err);
@@ -91,9 +106,15 @@ export default function AlarmScreen() {
   const handleTimeChange = useCallback(
     (event: DateTimePickerEvent, selected?: Date) => {
       if (Platform.OS === 'android') setShowTimePicker(false);
-      if (event.type === 'dismissed') return;
+      if (event.type === 'dismissed') {
+        logger.ui('Arrival time picker dismissed without change');
+        return;
+      }
       if (selected) {
-        updateConfig({ arrivalTime: { hour: selected.getHours(), minute: selected.getMinutes() } });
+        const h = selected.getHours();
+        const m = selected.getMinutes();
+        logger.ui(`Arrival time changed → ${h}:${String(m).padStart(2, '0')}`);
+        updateConfig({ arrivalTime: { hour: h, minute: m } });
       }
     },
     [updateConfig],
@@ -101,6 +122,7 @@ export default function AlarmScreen() {
 
   const handleToggle = async (enabled: boolean) => {
     if (enabled) {
+      logger.ui(`Alarm toggle ON — nominalJourney: ${nominalSeconds != null ? `${Math.round(nominalSeconds / 60)} min` : 'not available (will use 45 min fallback)'}`);
       await enableAlarm(nominalSeconds ?? undefined);
       // Immediately fetch live traffic so the alarm is refined with real data
       // before the first background check fires. refreshTraffic will reschedule
@@ -108,15 +130,20 @@ export default function AlarmScreen() {
       try {
         const { status: locStatus } = await Location.getForegroundPermissionsAsync();
         if (locStatus === 'granted') {
+          logger.ui('Alarm ON: fetching immediate live traffic to refine wake time');
           const pos = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
+          logger.debug(`Alarm ON: location ${pos.coords.latitude.toFixed(4)},${pos.coords.longitude.toFixed(4)}`);
           await refreshTraffic(pos.coords.latitude, pos.coords.longitude);
+        } else {
+          logger.warn(`Alarm ON: location permission is "${locStatus}" — skipping immediate traffic refresh`);
         }
       } catch (err) {
         logger.warn('Immediate traffic refresh after alarm enable failed', err);
       }
     } else {
+      logger.ui('Alarm toggle OFF');
       await disableAlarm();
     }
   };
@@ -148,14 +175,14 @@ export default function AlarmScreen() {
             {snoozeCount < 3 && (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.snoozeBtn]}
-                onPress={snooze}
+                onPress={() => { logger.ui(`Snooze button pressed (snoozeCount: ${snoozeCount})`); snooze(); }}
               >
                 <ThemedText type="defaultSemiBold">Snooze</ThemedText>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: tint }]}
-              onPress={dismiss}
+              onPress={() => { logger.ui('Dismiss button pressed'); dismiss(); }}
             >
               <ThemedText type="defaultSemiBold" style={{ color: tintText }}>
                 Dismiss

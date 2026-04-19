@@ -21,12 +21,19 @@ import { FALLBACK_COMMUTE_SECONDS } from '@/src/constants/alarm';
 import { logger } from '@/src/utils/logger';
 
 TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
-  logger.info('Background traffic check running');
+  const taskStart = Date.now();
+  logger.bg('Background traffic check triggered');
 
   try {
     const config = AlarmStorage.readConfig();
 
-    if (!config || !config.enabled) {
+    if (!config) {
+      logger.bg('Guard: no alarm config found — returning NoData');
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
+    if (!config.enabled) {
+      logger.bg('Guard: alarm is disabled — returning NoData');
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
@@ -34,38 +41,44 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
 
     // Day-of-week guard: skip days the alarm isn't active
     const todayDow = now.getDay(); // 0=Sun … 6=Sat
+    const dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     if (config.daysOfWeek.length > 0 && !config.daysOfWeek.includes(todayDow)) {
-      logger.info(`Today (${todayDow}) not in daysOfWeek — skipping traffic check`);
+      logger.bg(`Guard: today is ${dowNames[todayDow]} (DOW=${todayDow}), not in active days [${config.daysOfWeek.map(d => dowNames[d]).join(',')}] — returning NoData`);
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
-    // Use the currently scheduled wake time as the anchor for all window/checkpoint
-    // calculations. All checks are relative to wake time, not arrival time, so that
-    // the monitoring window is consistent regardless of journey length.
     const state = AlarmStorage.readState();
     const wakeTime = state.lastCalculatedWakeTime
       ? new Date(state.lastCalculatedWakeTime)
       : null;
 
     if (!wakeTime) {
-      logger.info('No scheduled wake time — skipping traffic check');
+      logger.bg('Guard: no scheduled wake time in state — returning NoData');
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
+    const msUntilWake = wakeTime.getTime() - now.getTime();
+    logger.bg(`State: wakeTime=${wakeTime.toISOString()}, msUntilWake=${msUntilWake}ms (${Math.round(msUntilWake / 60000)} min)`);
+
     if (!isInMonitoringWindow(now, wakeTime)) {
-      logger.info('Outside monitoring window — skipping traffic check');
+      logger.bg(`Guard: outside 60-min monitoring window (${Math.round(msUntilWake / 60000)} min until wake) — returning NoData`);
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
     const checkpoint = resolveCheckpoint(now, wakeTime);
     if (!checkpoint) {
+      logger.bg('Guard: could not resolve checkpoint (wake time may be in the past) — returning NoData');
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
+    logger.bg(`Proceeding: checkpoint=${checkpoint} min, dest="${config.destination.label}", arrival=${config.arrivalTime.hour}:${String(config.arrivalTime.minute).padStart(2,'0')}`);
+
     // Get current location for origin
+    logger.bg('Acquiring current location...');
     const locationResult = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced,
     });
+    logger.bg(`Location acquired: ${locationResult.coords.latitude.toFixed(4)},${locationResult.coords.longitude.toFixed(4)} (accuracy: ${locationResult.coords.accuracy?.toFixed(0)}m)`);
 
     const arrivalTime = buildArrivalDate(config.arrivalTime);
 
@@ -83,9 +96,10 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
         },
         checkpoint
       );
+      logger.bg(`Traffic result: ${trafficResult.durationSeconds}s (${Math.round(trafficResult.durationSeconds / 60)} min), static: ${trafficResult.staticDurationSeconds}s, delay: ${trafficResult.durationSeconds - trafficResult.staticDurationSeconds}s`);
     } catch (err) {
       if (err instanceof RoutesFetchError) {
-        logger.warn('Routes API failed in background task — failsafe remains active', err.message);
+        logger.warn(`BG: Routes API failed (${err.message}) — failsafe wake time remains active`);
         return BackgroundFetch.BackgroundFetchResult.Failed;
       }
       throw err;
@@ -96,27 +110,32 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
       trafficResult.durationSeconds,
       config.prepMinutes
     );
-    // Clamp so we never schedule a notification in the past
     const newWakeTime = new Date(Math.max(rawWake.getTime(), Date.now() + 10_000));
+    const wasClamped = newWakeTime.getTime() !== rawWake.getTime();
+
+    logger.bg(`Wake time calculation: arrival=${arrivalTime.toISOString()}, traffic=${Math.round(trafficResult.durationSeconds / 60)}min, prep=${config.prepMinutes}min → raw=${rawWake.toISOString()}, new=${newWakeTime.toISOString()}${wasClamped ? ' (CLAMPED)' : ''}`);
+
+    const diffMs = Math.abs(newWakeTime.getTime() - wakeTime.getTime());
+    logger.bg(`Delta vs current wake time: ${Math.round(diffMs / 1000)}s (threshold: 120s)`);
 
     if (shouldReschedule(wakeTime, newWakeTime)) {
+      logger.bg(`Rescheduling: delta ${Math.round(diffMs / 1000)}s > 120s threshold`);
       await NotificationService.rescheduleAlarm(config.id, newWakeTime, trafficResult);
       AlarmStorage.writeState({
         lastCalculatedWakeTime: newWakeTime.toISOString(),
         lastTrafficCheckAt: new Date().toISOString(),
         status: 'monitoring',
       });
-      logger.info(
-        `Alarm rescheduled to ${newWakeTime.toISOString()} (traffic: ${trafficResult.durationSeconds}s)`
-      );
+      logger.bg(`Status → monitoring. New wake: ${newWakeTime.toISOString()}`);
     } else {
       AlarmStorage.writeState({ lastTrafficCheckAt: new Date().toISOString() });
-      logger.info('Wake time unchanged — no reschedule needed');
+      logger.bg(`No reschedule: delta ${Math.round(diffMs / 1000)}s ≤ 120s threshold`);
     }
 
+    logger.bg(`Background task complete in ${Date.now() - taskStart}ms — returning NewData`);
     return BackgroundFetch.BackgroundFetchResult.NewData;
   } catch (err) {
-    logger.error('Background traffic check failed', err);
+    logger.error('Background traffic check failed with unexpected error', err);
     return BackgroundFetch.BackgroundFetchResult.Failed;
   }
 });

@@ -84,6 +84,10 @@ export const NotificationService = {
     const MIN_SCHEDULE_AHEAD_MS = 2_000;
     const now = Date.now();
     const firstRing = Math.max(wakeTime.getTime(), now + MIN_SCHEDULE_AHEAD_MS);
+    const wasClamped = firstRing !== wakeTime.getTime();
+    const msUntilFirstRing = firstRing - now;
+
+    logger.notif(`Scheduling alarm burst — type: "${payload.type}", wakeTime: ${wakeTime.toISOString()}, firstRing: ${new Date(firstRing).toISOString()}${wasClamped ? ' (CLAMPED to now+2s)' : ''}, msUntilRing: ${msUntilFirstRing}ms (${Math.round(msUntilFirstRing / 1000)}s)`);
 
     for (let i = 0; i < ALARM_BURST_COUNT; i++) {
       const ringTime = new Date(firstRing + i * ALARM_BURST_INTERVAL_MS);
@@ -103,12 +107,14 @@ export const NotificationService = {
         },
       });
       ids.push(id);
+      if (isFirst) {
+        logger.notif(`  Ring 1/${ALARM_BURST_COUNT}: ${ringTime.toISOString()} (id: ${id})`);
+      }
     }
+    logger.notif(`  Rings 2–${ALARM_BURST_COUNT}: every ${ALARM_BURST_INTERVAL_MS / 1000}s after first ring. Last ring: ${new Date(firstRing + (ALARM_BURST_COUNT - 1) * ALARM_BURST_INTERVAL_MS).toISOString()}`);
 
     AlarmStorage.writeScheduledNotificationIds(alarmId, ids);
-    logger.info(
-      `Alarm burst of ${ALARM_BURST_COUNT} scheduled from ${wakeTime.toISOString()} (ids: ${ids[0]}…)`
-    );
+    logger.notif(`Alarm burst scheduled: ${ALARM_BURST_COUNT} notifications, first id: ${ids[0]}`);
     return ids[0];
   },
 
@@ -117,6 +123,7 @@ export const NotificationService = {
     newWakeTime: Date,
     trafficResult: TrafficResult
   ): Promise<string> {
+    logger.notif(`Rescheduling alarm → ${newWakeTime.toISOString()} (traffic: ${trafficResult.durationSeconds}s = ${Math.round(trafficResult.durationSeconds / 60)} min, delay vs static: ${trafficResult.durationSeconds - trafficResult.staticDurationSeconds}s)`);
     return this.scheduleAlarm(alarmId, newWakeTime, {
       type: 'alarm_fire',
       alarmId,
@@ -128,11 +135,14 @@ export const NotificationService = {
   async cancelAlarm(alarmId: string): Promise<void> {
     const existingIds = AlarmStorage.readScheduledNotificationIds(alarmId);
     if (existingIds.length > 0) {
+      logger.notif(`Cancelling alarm burst: ${existingIds.length} notifications (ids: ${existingIds[0]}…)`);
       await Promise.all(
         existingIds.map((id) => Notifications.cancelScheduledNotificationAsync(id))
       );
       AlarmStorage.clearScheduledNotificationIds(alarmId);
-      logger.info(`Alarm burst cancelled (${existingIds.length} notifications)`);
+      logger.notif(`Alarm burst cancelled (${existingIds.length} notifications removed)`);
+    } else {
+      logger.notif('cancelAlarm called but no scheduled notifications found for this alarm');
     }
   },
 

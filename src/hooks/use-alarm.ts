@@ -16,23 +16,25 @@ export function useAlarm() {
 
   const enableAlarm = useCallback(async (nominalDurationSeconds?: number) => {
     const { config } = store;
-    if (!config) return;
+    if (!config) {
+      logger.warn('[use-alarm] enableAlarm called but config is null');
+      return;
+    }
 
     const arrivalTime = buildArrivalDate(config.arrivalTime);
-
-    // Use nominal journey time if available, otherwise fall back to 45-min estimate
     const initialDurationSeconds = nominalDurationSeconds ?? FALLBACK_COMMUTE_SECONDS;
     const rawWakeTime = calculateWakeTime(
       arrivalTime,
       initialDurationSeconds,
       config.prepMinutes
     );
-
-    // Clamp to at least 10 seconds from now — arrivalTime is guaranteed future
-    // but the calculated wake time (arrival - commute - prep) may already be past.
     const failsafeWake = new Date(
       Math.max(rawWakeTime.getTime(), Date.now() + 10_000)
     );
+    const wasClamped = failsafeWake.getTime() !== rawWakeTime.getTime();
+
+    logger.alarm(`Enabling alarm — arrival: ${arrivalTime.toISOString()}, nominalDuration: ${nominalDurationSeconds != null ? `${Math.round(nominalDurationSeconds / 60)} min (provided)` : `${Math.round(FALLBACK_COMMUTE_SECONDS / 60)} min (fallback)`}, prepMinutes: ${config.prepMinutes}`);
+    logger.alarm(`Initial wake time — raw: ${rawWakeTime.toISOString()}, failsafe: ${failsafeWake.toISOString()}${wasClamped ? ' (CLAMPED — raw was in the past)' : ''}`);
 
     await NotificationService.scheduleAlarm(config.id, failsafeWake, {
       type: 'alarm_fire',
@@ -42,15 +44,17 @@ export function useAlarm() {
 
     store.setEnabled(true);
     store.setLastCalculatedWakeTime(failsafeWake.toISOString());
-    logger.info(`Alarm enabled. Failsafe set for ${failsafeWake.toISOString()}`);
+    logger.alarm(`Alarm enabled and scheduled. Destination: "${config.destination.label}", days: [${config.daysOfWeek.join(',')}]`);
   }, [store]);
 
   const disableAlarm = useCallback(async () => {
     const { config } = store;
     if (config) {
+      logger.alarm(`Disabling alarm (id: ${config.id})`);
       await NotificationService.cancelAlarm(config.id);
     }
     store.setEnabled(false);
+    logger.alarm('Alarm disabled — status → idle');
   }, [store]);
 
   const updateConfig = useCallback(
@@ -64,6 +68,8 @@ export function useAlarm() {
     const { config } = store;
     if (!config) return;
 
+    logger.ui('Snooze tapped — fetching live location and traffic');
+
     const fetchLiveDuration = async () => {
       let originLatitude = 0;
       let originLongitude = 0;
@@ -73,10 +79,12 @@ export function useAlarm() {
         });
         originLatitude = pos.coords.latitude;
         originLongitude = pos.coords.longitude;
+        logger.alarm(`Snooze: location acquired — ${originLatitude.toFixed(4)},${originLongitude.toFixed(4)}`);
       } catch {
         logger.warn('Snooze: could not get location, using 0,0 origin');
       }
       const arrivalTime = buildArrivalDate(config.arrivalTime);
+      logger.traffic(`Snooze: fetching live traffic to ${config.destination.label} (arrival: ${arrivalTime.toISOString()})`);
       const result = await fetchRoute(
         {
           originLatitude,
@@ -89,6 +97,7 @@ export function useAlarm() {
         },
         10 // snooze is always close to wake time
       );
+      logger.traffic(`Snooze: traffic result — ${result.durationSeconds}s (${Math.round(result.durationSeconds / 60)} min)`);
       return result.durationSeconds;
     };
 
@@ -96,6 +105,7 @@ export function useAlarm() {
 
     const updatedWakeTime = store.lastCalculatedWakeTime;
     if (updatedWakeTime && config) {
+      logger.alarm(`Snooze: scheduling re-alarm at ${updatedWakeTime}`);
       await NotificationService.scheduleAlarm(config.id, new Date(updatedWakeTime), {
         type: 'snooze_recheck',
         alarmId: config.id,
@@ -105,6 +115,7 @@ export function useAlarm() {
   }, [store]);
 
   const dismiss = useCallback(async () => {
+    logger.ui(`Dismiss tapped — last traffic: ${lastTrafficResult ? `${lastTrafficResult.durationSeconds}s (${Math.round(lastTrafficResult.durationSeconds / 60)} min)` : 'none'}`);
     await store.performDismiss(lastTrafficResult?.durationSeconds);
   }, [store, lastTrafficResult]);
 
