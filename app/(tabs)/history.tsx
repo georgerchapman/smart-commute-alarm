@@ -5,10 +5,15 @@ import { ThemedView } from '@/components/themed-view';
 import { HistoryItem } from '@/components/history/history-item';
 import { HistoryStorage } from '@/src/services/storage/alarm-storage';
 import { useMemo } from 'react';
+import { logger } from '@/src/utils/logger';
 import type { AlarmHistoryEntry } from '@/src/types/alarm';
 
 export default function HistoryScreen() {
-  const entries: AlarmHistoryEntry[] = useMemo(() => HistoryStorage.readAll(), []);
+  const entries: AlarmHistoryEntry[] = useMemo(() => {
+    const all = HistoryStorage.readAll();
+    logger.info(`[DEBUG] History loaded: ${all.length} entries`);
+    return all;
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe}>

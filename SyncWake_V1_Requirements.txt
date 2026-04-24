@@ -1,0 +1,52 @@
+# PROJECT: SyncWake Mobile App (V1.0)
+# OBJECTIVE: Smart alarm with dynamic traffic-based adjustment.
+# STORAGE: Local device storage only (No Authentication required).
+
+## IMPLEMENTATION GOLDEN RULES:
+- The "Silent" Problem: On iOS, third-party apps are heavily restricted. Should prioritize the AVAudioSession category of "Playback" to ensure the alarm sounds even if the physical ringer switch is flipped.
+- API Throttling: Implement a "Debounce" or a strict limit on API calls. For V1, the app should only ping the Maps API twice (once 60 minutes before the nominal wake-up, and once 15 minutes before) to keep Google Cloud bill at zero.
+
+## 1. DEVICE PERMISSIONS & ACCESS
+REQ-1.1: Background Execution
+- Behavior: App must use AlarmManager (Android) or BackgroundTasks/Push (iOS) to trigger checks.
+- Pass Criteria: The alarm triggers even if the app is not in the foreground.
+
+REQ-1.2: Location Services
+- Behavior: App requests "Always Allow" location permission for accurate origin-based traffic pings.
+- Pass Criteria: App functions without crashing when location permission is granted.
+
+## 2. DATA STORAGE (LOCAL)
+REQ-2.1: Local Persistence
+- Behavior: All settings (Destination, Arrival Time, Prep Buffer) must be saved via AsyncStorage or SQLite.
+- Pass Criteria: Data persists after force-closing and restarting the app.
+
+## 3. CORE LOGIC & FAIL-SAFES
+REQ-3.1: Nominal Check (The Baseline)
+- Behavior: App stores the "Normal" commute duration (no traffic) as the baseline.
+- Pass Criteria: Baseline is established during the initial route setup.
+
+REQ-3.2: Dynamic Traffic Adjustment
+- Behavior: Trigger Time = Target Arrival - (Live Duration + Prep Buffer).
+- Pass Criteria: If Live Duration > Nominal Duration, the alarm triggers earlier by the difference.
+
+REQ-3.3: Connectivity Fail-Safe
+- Behavior: If the Traffic API ping fails due to lack of internet or server error, the app MUST trigger at the "Nominal Journey Time" (Ideal Wake-up).
+- Pass Criteria: Alarm fires at the nominal time despite 0% connectivity.
+
+## 4. ALARM FUNCTIONALITY
+REQ-4.1: Audio Output
+- Behavior: Plays a continuous, high-volume looping alarm sound.
+- Pass Criteria: Audio ignores "Silent Mode" (where permitted by OS) and plays until user action.
+
+REQ-4.2: Standard Snooze
+- Behavior: Dismissing with "Snooze" silences the alarm for a fixed 9-minute interval.
+- Pass Criteria: Alarm restarts exactly 540 seconds after Snooze is pressed, regardless of traffic updates.
+
+## 5. USER INTERFACE
+REQ-5.1: Destination Setup
+- Behavior: Google Places Autocomplete allows the user to select a specific office/location.
+- Pass Criteria: Selected destination is displayed on the main dashboard.
+
+REQ-5.2: Status Feedback
+- Behavior: UI displays "Checking traffic..." or "Traffic: +5m delay" clearly.
+- Pass Criteria: Visual feedback confirms the "Smart" logic is active.

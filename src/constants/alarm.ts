@@ -14,8 +14,9 @@ export const RESCHEDULE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 // Maximum number of snoozes before auto-dismissal
 export const MAX_SNOOZE_COUNT = 3;
 
-// Minimum gap between snooze and next ring (even if traffic says earlier)
-export const MIN_SNOOZE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// Fixed snooze duration per REQ-4.2: alarm restarts exactly 540 seconds after
+// Snooze is pressed, regardless of traffic updates.
+export const SNOOZE_DURATION_MS = 540 * 1000; // 9 minutes (540 seconds)
 
 // Default prep time if user hasn't configured one
 export const DEFAULT_PREP_MINUTES = 30;

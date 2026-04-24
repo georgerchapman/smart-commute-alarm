@@ -1,7 +1,7 @@
 import { View, ScrollView, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useCountdown } from '@/src/hooks/use-countdown';
@@ -27,6 +27,7 @@ export default function AlarmScreen() {
   const tintText = useThemeColor({ light: '#fff', dark: '#000' }, 'tint');
 
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const isRefreshingRef = useRef(false);
 
   // Detect when the countdown reaches zero and the alarm should start firing.
   // Only active when the alarm is in a schedulable state so that the initial
@@ -57,6 +58,11 @@ export default function AlarmScreen() {
         return;
       }
 
+      if (status === 'snoozed') {
+        logger.debug('[index] Screen focused — traffic check skipped (alarm is snoozed)');
+        return;
+      }
+
       const wakeDate = new Date(lastCalculatedWakeTime);
       const now = new Date();
       const msUntilWake = wakeDate.getTime() - now.getTime();
@@ -75,8 +81,14 @@ export default function AlarmScreen() {
         return;
       }
 
+      if (isRefreshingRef.current) {
+        logger.debug(`[index] Screen focused — refresh already in flight, skipping`);
+        return;
+      }
+
       logger.ui(`[index] Screen focused — triggering foreground traffic refresh (${Math.round(msUntilWake / 60000)} min until wake)`);
 
+      isRefreshingRef.current = true;
       (async () => {
         try {
           const { status: locStatus } = await Location.getForegroundPermissionsAsync();
@@ -91,6 +103,8 @@ export default function AlarmScreen() {
           await refreshTraffic(pos.coords.latitude, pos.coords.longitude);
         } catch (err) {
           logger.warn('Home screen traffic refresh failed', err);
+        } finally {
+          isRefreshingRef.current = false;
         }
       })();
     }, [config?.enabled, lastCalculatedWakeTime, lastFetchedAt, refreshTraffic])

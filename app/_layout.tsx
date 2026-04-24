@@ -17,6 +17,7 @@ import { registerNotificationCategories } from '@/src/services/notifications/not
 import { PurchasesService } from '@/src/services/purchases/purchases-service';
 import { AlarmStorage } from '@/src/services/storage/alarm-storage';
 import type { NotificationPayload } from '@/src/types/notification';
+import { logger } from '@/src/utils/logger';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -33,24 +34,34 @@ export default function RootLayout() {
   // Bootstrap all services on mount
   useEffect(() => {
     async function bootstrap() {
+      logger.info('[DEBUG] bootstrap() start');
+
       // Load persisted alarm state
       initAlarm();
+      logger.info('[DEBUG] initAlarm() complete');
 
       // Register notification action categories (iOS)
       await registerNotificationCategories();
+      logger.info('[DEBUG] registerNotificationCategories() complete');
 
       // Register background fetch task
       await registerBackgroundTasks();
+      logger.info('[DEBUG] registerBackgroundTasks() complete');
 
       // Initialise RevenueCat and hydrate subscription store
       PurchasesService.init();
       const status = await PurchasesService.getSubscriptionStatus();
       setSubscriptionStatus(status);
+      logger.info('[DEBUG] PurchasesService initialised, subscription status hydrated');
 
       // Show onboarding on first launch
-      if (!AlarmStorage.hasSeenOnboarding()) {
+      const needsOnboarding = !AlarmStorage.hasSeenOnboarding();
+      logger.info(`[DEBUG] Onboarding redirect: ${needsOnboarding ? 'yes' : 'no'}`);
+      if (needsOnboarding) {
         router.replace('/onboarding');
       }
+
+      logger.info('[DEBUG] bootstrap() complete');
     }
 
     bootstrap();
@@ -63,16 +74,21 @@ export default function RootLayout() {
       const { actionIdentifier, notification } = response;
       const payload = notification.request.content.data as unknown as NotificationPayload;
 
+      logger.ui(`[DEBUG] Notification response: action="${actionIdentifier}", payload.type="${payload?.type}"`);
+
       if (actionIdentifier === 'DISMISS') {
         // Cancel remaining burst, record history, reschedule for next occurrence
+        logger.ui('[DEBUG] DISMISS action — calling performDismiss()');
         performDismiss().catch(() => {});
       } else if (actionIdentifier === 'SNOOZE') {
         // Show the in-app firing overlay so the user can snooze properly
+        logger.ui('[DEBUG] SNOOZE action — opening firing overlay');
         setAlarmFiring();
         router.push('/');
       } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
         // User tapped the notification body — show firing overlay
         if (payload?.type === 'alarm_fire' || payload?.type === 'snooze_recheck') {
+          logger.ui(`[DEBUG] DEFAULT tap on "${payload.type}" — opening firing overlay`);
           setAlarmFiring();
           router.push('/');
         }

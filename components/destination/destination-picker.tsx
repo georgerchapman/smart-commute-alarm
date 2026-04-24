@@ -9,6 +9,7 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { logger } from '@/src/utils/logger';
 import type { Destination } from '@/src/types/alarm';
 
 const PLACES_AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
@@ -38,6 +39,7 @@ export function DestinationPicker({ value, onChange }: Props) {
       return;
     }
     setLoading(true);
+    logger.traffic(`[DEBUG] Autocomplete request: "${input}" (${input.length} chars)`);
     try {
       const res = await fetch(PLACES_AUTOCOMPLETE_URL, {
         method: 'POST',
@@ -48,13 +50,14 @@ export function DestinationPicker({ value, onChange }: Props) {
         body: JSON.stringify({ input }),
       });
       const data = await res.json();
-      setSuggestions(
-        (data.suggestions ?? []).map((s: any) => ({
-          placeId: s.placePrediction.placeId,
-          text: s.placePrediction.text.text,
-        }))
-      );
-    } catch {
+      const mapped = (data.suggestions ?? []).map((s: any) => ({
+        placeId: s.placePrediction.placeId,
+        text: s.placePrediction.text.text,
+      }));
+      logger.traffic(`[DEBUG] Autocomplete: ${mapped.length} suggestions received`);
+      setSuggestions(mapped);
+    } catch (err) {
+      logger.error('[DEBUG] Autocomplete fetch failed', err);
       setSuggestions([]);
     } finally {
       setLoading(false);
@@ -72,6 +75,7 @@ export function DestinationPicker({ value, onChange }: Props) {
 
   const handleSelect = useCallback(
     async (s: Suggestion) => {
+      logger.ui(`[DEBUG] Place selected: "${s.text}" (placeId: ${s.placeId})`);
       setSuggestions([]);
       setQuery(s.text);
       let latitude = 0;
@@ -83,8 +87,9 @@ export function DestinationPicker({ value, onChange }: Props) {
         const data = await res.json();
         latitude = data.location?.latitude ?? 0;
         longitude = data.location?.longitude ?? 0;
-      } catch {
-        /* fall back to 0,0 */
+        logger.traffic(`[DEBUG] Place details fetched: ${latitude.toFixed(4)},${longitude.toFixed(4)}${latitude === 0 && longitude === 0 ? ' (fallback 0,0)' : ''}`);
+      } catch (err) {
+        logger.error('[DEBUG] Place details fetch failed — falling back to 0,0', err);
       }
       onChange({
         label: value?.label ?? '',

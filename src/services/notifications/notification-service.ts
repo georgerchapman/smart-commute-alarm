@@ -135,15 +135,28 @@ export const NotificationService = {
   async cancelAlarm(alarmId: string): Promise<void> {
     const existingIds = AlarmStorage.readScheduledNotificationIds(alarmId);
     if (existingIds.length > 0) {
-      logger.notif(`Cancelling alarm burst: ${existingIds.length} notifications (ids: ${existingIds[0]}…)`);
+      logger.notif(`Cancelling alarm burst: ${existingIds.length} tracked notifications (ids: ${existingIds[0]}…)`);
       await Promise.all(
         existingIds.map((id) => Notifications.cancelScheduledNotificationAsync(id))
       );
       AlarmStorage.clearScheduledNotificationIds(alarmId);
-      logger.notif(`Alarm burst cancelled (${existingIds.length} notifications removed)`);
-    } else {
-      logger.notif('cancelAlarm called but no scheduled notifications found for this alarm');
     }
+
+    // Safety sweep: cancel any orphaned notifications that survived because
+    // rapid reschedules overwrote the stored IDs before cancellation ran.
+    const remaining = await Notifications.getAllScheduledNotificationsAsync();
+    const orphans = remaining.filter((n) => {
+      const payload = n.content.data as Record<string, unknown> | undefined;
+      return payload?.alarmId === alarmId;
+    });
+    if (orphans.length > 0) {
+      logger.notif(`Sweeping ${orphans.length} orphaned notifications for alarm ${alarmId}`);
+      await Promise.all(
+        orphans.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
+      );
+    }
+
+    logger.notif(`cancelAlarm complete: ${existingIds.length} tracked + ${orphans.length} orphans removed`);
   },
 
   async cancelAll(): Promise<void> {

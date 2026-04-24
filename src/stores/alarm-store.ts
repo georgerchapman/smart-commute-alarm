@@ -18,7 +18,7 @@ import {
 import {
   DEFAULT_PREP_MINUTES,
   MAX_SNOOZE_COUNT,
-  MIN_SNOOZE_INTERVAL_MS,
+  SNOOZE_DURATION_MS,
   FALLBACK_COMMUTE_SECONDS,
 } from '@/src/constants/alarm';
 import { NotificationService } from '@/src/services/notifications/notification-service';
@@ -32,7 +32,7 @@ interface AlarmStore extends AlarmState {
   setStatus: (status: AlarmStatus) => void;
   setFiring: () => void;
   setLastCalculatedWakeTime: (isoString: string) => void;
-  snooze: (fetchLiveDuration: () => Promise<number>) => Promise<void>;
+  snooze: () => void;
   dismiss: () => void;
   /** Cancel the notification burst, record history, then reschedule or disable. */
   performDismiss: (lastTrafficDurationSeconds?: number) => Promise<void>;
@@ -190,7 +190,7 @@ export const useAlarmStore = create<AlarmStore>()(
       logger.alarm(`Status → scheduled. Next alarm: ${nextWake.toISOString()}`);
     },
 
-    async snooze(fetchLiveDuration: () => Promise<number>) {
+    snooze() {
       const { config, snoozeCount } = get();
       if (!config) return;
 
@@ -200,34 +200,12 @@ export const useAlarmStore = create<AlarmStore>()(
       }
 
       const newCount = snoozeCount + 1;
-      set({ status: 'snoozed', snoozeCount: newCount });
-      AlarmStorage.writeState({ status: 'snoozed', snoozeCount: newCount });
-      logger.alarm(`Status → snoozed (snoozeCount: ${newCount}/${MAX_SNOOZE_COUNT})`);
+      const snoozeWake = new Date(Date.now() + SNOOZE_DURATION_MS);
 
-      try {
-        const durationSeconds = await fetchLiveDuration();
-        const arrivalTime = buildArrivalDate(config.arrivalTime);
-        const newWakeTime = calculateWakeTime(arrivalTime, durationSeconds, config.prepMinutes);
-        const now = new Date();
-        const minSnoozeTarget = new Date(now.getTime() + MIN_SNOOZE_INTERVAL_MS);
-        const clampedWakeTime = new Date(
-          Math.max(newWakeTime.getTime(), minSnoozeTarget.getTime())
-        );
-        const wasClamped = clampedWakeTime.getTime() !== newWakeTime.getTime();
+      logger.alarm(`Snooze #${newCount}/${MAX_SNOOZE_COUNT}: fixed ${SNOOZE_DURATION_MS / 1000}s interval → ${snoozeWake.toISOString()}`);
 
-        logger.alarm(`Snooze #${newCount}: traffic=${Math.round(durationSeconds / 60)}min, rawWake=${newWakeTime.toISOString()}, finalWake=${clampedWakeTime.toISOString()}${wasClamped ? ` (CLAMPED — raw was < ${MIN_SNOOZE_INTERVAL_MS / 60000} min away)` : ''}`);
-
-        set({ lastCalculatedWakeTime: clampedWakeTime.toISOString() });
-        AlarmStorage.writeState({ lastCalculatedWakeTime: clampedWakeTime.toISOString() });
-        return clampedWakeTime as unknown as void;
-      } catch (err) {
-        logger.error('Snooze traffic fetch failed — using fixed 5-min interval', err);
-        const fallback = new Date(Date.now() + MIN_SNOOZE_INTERVAL_MS);
-        logger.alarm(`Snooze fallback wake time: ${fallback.toISOString()}`);
-        set({ lastCalculatedWakeTime: fallback.toISOString() });
-        AlarmStorage.writeState({ lastCalculatedWakeTime: fallback.toISOString() });
-        return fallback as unknown as void;
-      }
+      set({ status: 'snoozed', snoozeCount: newCount, lastCalculatedWakeTime: snoozeWake.toISOString() });
+      AlarmStorage.writeState({ status: 'snoozed', snoozeCount: newCount, lastCalculatedWakeTime: snoozeWake.toISOString() });
     },
 
     dismiss() {

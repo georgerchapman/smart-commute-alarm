@@ -11,6 +11,7 @@ import { usePermissions } from '@/src/hooks/use-permissions';
 import { useSubscription } from '@/src/hooks/use-subscription';
 import { openExactAlarmSettings } from '@/src/services/permissions/permission-service';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { logger } from '@/src/utils/logger';
 import Constants from 'expo-constants';
 
 export default function SettingsScreen() {
@@ -35,7 +36,10 @@ export default function SettingsScreen() {
         <Section title="Destination" border={border} bg={cardBg}>
           <DestinationPicker
             value={config?.destination ?? null}
-            onChange={(destination) => updateConfig({ destination })}
+            onChange={(destination) => {
+              logger.ui(`[DEBUG] Destination changed: label="${destination.label}", address="${destination.address}"`);
+              updateConfig({ destination });
+            }}
           />
         </Section>
 
@@ -43,7 +47,10 @@ export default function SettingsScreen() {
         <Section title="Preparation Time" border={border} bg={cardBg}>
           <PrepTimeSlider
             value={config?.prepMinutes ?? 30}
-            onChange={(prepMinutes) => updateConfig({ prepMinutes })}
+            onChange={(prepMinutes) => {
+              logger.ui(`[DEBUG] Prep time changed: ${config?.prepMinutes ?? 30} -> ${prepMinutes} min`);
+              updateConfig({ prepMinutes });
+            }}
           />
         </Section>
 
@@ -51,7 +58,11 @@ export default function SettingsScreen() {
         <Section title="Schedule" border={border} bg={cardBg}>
           <DayPicker
             value={config?.daysOfWeek ?? [1, 2, 3, 4, 5]}
-            onChange={(daysOfWeek) => updateConfig({ daysOfWeek })}
+            onChange={(daysOfWeek) => {
+              const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              logger.ui(`[DEBUG] Schedule days changed: [${daysOfWeek.map(d => dayNames[d]).join(',')}]`);
+              updateConfig({ daysOfWeek });
+            }}
             tint={tint}
             tintText={tintText}
             border={border}
@@ -85,7 +96,7 @@ export default function SettingsScreen() {
               )}
             </>
           ) : (
-            <TouchableOpacity onPress={check}>
+            <TouchableOpacity onPress={() => { logger.ui('[DEBUG] Permission check triggered'); check(); }}>
               <ThemedText style={{ color: tint }}>Check permissions</ThemedText>
             </TouchableOpacity>
           )}
@@ -103,7 +114,7 @@ export default function SettingsScreen() {
               <ThemedText style={[styles.proBtnText, { color: tintText }]}>Go Pro</ThemedText>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={restore} style={styles.restoreBtn}>
+          <TouchableOpacity onPress={() => { logger.ui('[DEBUG] Restore purchases tapped'); restore(); }} style={styles.restoreBtn}>
             <ThemedText style={{ color: tint, fontSize: 14 }}>
               Restore Purchases
             </ThemedText>

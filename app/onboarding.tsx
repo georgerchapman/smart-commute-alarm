@@ -9,6 +9,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { usePermissions } from '@/src/hooks/use-permissions';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { AlarmStorage } from '@/src/services/storage/alarm-storage';
+import { logger } from '@/src/utils/logger';
 
 type Step = {
   icon: string;
@@ -68,12 +69,14 @@ export default function OnboardingScreen() {
   const isLast = stepIndex === STEPS.length - 1;
 
   const handleAction = async () => {
+    logger.ui(`[DEBUG] Onboarding step ${stepIndex + 1}/${STEPS.length}: "${currentStep.action}" tapped`);
     if (stepIndex === 0) {
       // Request all permissions in sequence on first tap
       await requestAll();
     }
 
     if (isLast) {
+      logger.ui('[DEBUG] Onboarding complete');
       AlarmStorage.markOnboardingComplete();
       router.replace('/');
     } else {
@@ -82,6 +85,7 @@ export default function OnboardingScreen() {
   };
 
   const handleSkip = () => {
+    logger.ui(`[DEBUG] Onboarding skipped at step ${stepIndex + 1}/${STEPS.length}`);
     AlarmStorage.markOnboardingComplete();
     router.replace('/');
   };

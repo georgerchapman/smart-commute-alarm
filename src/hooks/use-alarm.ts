@@ -1,9 +1,7 @@
 import { useCallback } from 'react';
-import * as Location from 'expo-location';
 import { useAlarmStore } from '@/src/stores/alarm-store';
 import { useTrafficStore } from '@/src/stores/traffic-store';
 import { NotificationService } from '@/src/services/notifications/notification-service';
-import { fetchRoute } from '@/src/services/maps/routes-api';
 import { buildArrivalDate } from '@/src/utils/time';
 import { calculateWakeTime } from '@/src/utils/backoff';
 import { FALLBACK_COMMUTE_SECONDS } from '@/src/constants/alarm';
@@ -68,43 +66,14 @@ export function useAlarm() {
     const { config } = store;
     if (!config) return;
 
-    logger.ui('Snooze tapped — fetching live location and traffic');
+    logger.ui('Snooze tapped — scheduling fixed 540s interval');
 
-    const fetchLiveDuration = async () => {
-      let originLatitude = 0;
-      let originLongitude = 0;
-      try {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        originLatitude = pos.coords.latitude;
-        originLongitude = pos.coords.longitude;
-        logger.alarm(`Snooze: location acquired — ${originLatitude.toFixed(4)},${originLongitude.toFixed(4)}`);
-      } catch {
-        logger.warn('Snooze: could not get location, using 0,0 origin');
-      }
-      const arrivalTime = buildArrivalDate(config.arrivalTime);
-      logger.traffic(`Snooze: fetching live traffic to ${config.destination.label} (arrival: ${arrivalTime.toISOString()})`);
-      const result = await fetchRoute(
-        {
-          originLatitude,
-          originLongitude,
-          destinationLatitude: config.destination.latitude,
-          destinationLongitude: config.destination.longitude,
-          arrivalTime: arrivalTime.toISOString(),
-          travelMode: 'DRIVE',
-          routingPreference: 'TRAFFIC_AWARE',
-        },
-        10 // snooze is always close to wake time
-      );
-      logger.traffic(`Snooze: traffic result — ${result.durationSeconds}s (${Math.round(result.durationSeconds / 60)} min)`);
-      return result.durationSeconds;
-    };
+    store.snooze();
 
-    await store.snooze(fetchLiveDuration);
-
-    const updatedWakeTime = store.lastCalculatedWakeTime;
-    if (updatedWakeTime && config) {
+    // Read the updated wake time directly from the store (not the React closure)
+    // to avoid the stale-value bug.
+    const updatedWakeTime = useAlarmStore.getState().lastCalculatedWakeTime;
+    if (updatedWakeTime) {
       logger.alarm(`Snooze: scheduling re-alarm at ${updatedWakeTime}`);
       await NotificationService.scheduleAlarm(config.id, new Date(updatedWakeTime), {
         type: 'snooze_recheck',

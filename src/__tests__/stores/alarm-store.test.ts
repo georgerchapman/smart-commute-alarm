@@ -17,7 +17,7 @@ import { AlarmStorage, HistoryStorage } from '@/src/services/storage/alarm-stora
 import { NotificationService } from '@/src/services/notifications/notification-service';
 import {
   MAX_SNOOZE_COUNT,
-  MIN_SNOOZE_INTERVAL_MS,
+  SNOOZE_DURATION_MS,
   FALLBACK_COMMUTE_SECONDS,
 } from '@/src/constants/alarm';
 import { calculateWakeTime } from '@/src/utils/backoff';
@@ -128,57 +128,35 @@ describe('alarm-store: snooze', () => {
   });
   afterEach(() => jest.useRealTimers());
 
-  it('increments snoozeCount and sets status to "snoozed"', async () => {
-    const fetch = jest.fn().mockResolvedValue(2700);
-    await useAlarmStore.getState().snooze(fetch);
+  it('increments snoozeCount and sets status to "snoozed"', () => {
+    useAlarmStore.getState().snooze();
     expect(useAlarmStore.getState().snoozeCount).toBe(1);
     expect(useAlarmStore.getState().status).toBe('snoozed');
   });
 
-  it('uses the fetched traffic duration to calculate the new wake time', async () => {
-    const fetch = jest.fn().mockResolvedValue(1800); // 30min commute
-    await useAlarmStore.getState().snooze(fetch);
-    const { lastCalculatedWakeTime } = useAlarmStore.getState();
-    expect(lastCalculatedWakeTime).not.toBeNull();
-  });
-
-  it('clamps wake time to at least MIN_SNOOZE_INTERVAL_MS (5min) from now', async () => {
-    // Huge commute → calculateWakeTime returns far past date → clamped to now + 5min
-    const fetch = jest.fn().mockResolvedValue(86400); // 24hr commute
-    await useAlarmStore.getState().snooze(fetch);
+  it('sets wake time to exactly now + SNOOZE_DURATION_MS (540s)', () => {
+    useAlarmStore.getState().snooze();
     const { lastCalculatedWakeTime } = useAlarmStore.getState();
     const wakeMs = new Date(lastCalculatedWakeTime!).getTime();
-    expect(wakeMs).toBeGreaterThanOrEqual(Date.now() + MIN_SNOOZE_INTERVAL_MS);
+    expect(wakeMs).toBe(Date.now() + SNOOZE_DURATION_MS);
   });
 
-  it('falls back to now + MIN_SNOOZE_INTERVAL_MS when fetchLiveDuration throws', async () => {
-    const fetch = jest.fn().mockRejectedValue(new Error('Network failure'));
-    await useAlarmStore.getState().snooze(fetch);
-    const { lastCalculatedWakeTime } = useAlarmStore.getState();
-    const wakeMs = new Date(lastCalculatedWakeTime!).getTime();
-    expect(wakeMs).toBeGreaterThanOrEqual(Date.now() + MIN_SNOOZE_INTERVAL_MS - 100);
-    expect(wakeMs).toBeLessThanOrEqual(Date.now() + MIN_SNOOZE_INTERVAL_MS + 5000);
-  });
-
-  it(`auto-dismisses when snoozeCount already equals MAX_SNOOZE_COUNT (${MAX_SNOOZE_COUNT})`, async () => {
+  it(`auto-dismisses when snoozeCount already equals MAX_SNOOZE_COUNT (${MAX_SNOOZE_COUNT})`, () => {
     useAlarmStore.setState({ snoozeCount: MAX_SNOOZE_COUNT });
-    const fetch = jest.fn();
-    await useAlarmStore.getState().snooze(fetch);
+    useAlarmStore.getState().snooze();
     // Should call dismiss() instead — status becomes 'dismissed', count reset
     expect(useAlarmStore.getState().status).toBe('dismissed');
-    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('allows exactly MAX_SNOOZE_COUNT snoozes before auto-dismiss', async () => {
-    const fetch = jest.fn().mockResolvedValue(2700);
+  it('allows exactly MAX_SNOOZE_COUNT snoozes before auto-dismiss', () => {
     for (let i = 0; i < MAX_SNOOZE_COUNT; i++) {
-      await useAlarmStore.getState().snooze(fetch);
+      useAlarmStore.getState().snooze();
     }
     expect(useAlarmStore.getState().snoozeCount).toBe(MAX_SNOOZE_COUNT);
     expect(useAlarmStore.getState().status).toBe('snoozed');
 
     // One more → auto-dismiss
-    await useAlarmStore.getState().snooze(fetch);
+    useAlarmStore.getState().snooze();
     expect(useAlarmStore.getState().status).toBe('dismissed');
   });
 });
