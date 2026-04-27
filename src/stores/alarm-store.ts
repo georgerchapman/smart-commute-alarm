@@ -33,7 +33,6 @@ interface AlarmStore extends AlarmState {
   setFiring: () => void;
   setLastCalculatedWakeTime: (isoString: string) => void;
   snooze: () => void;
-  dismiss: () => void;
   /** Cancel the notification burst, record history, then reschedule or disable. */
   performDismiss: (lastTrafficDurationSeconds?: number) => Promise<void>;
   /** Schedule the alarm for its next weekly occurrence (or disable if one-off). */
@@ -73,7 +72,6 @@ export const useAlarmStore = create<AlarmStore>()(
         daysOfWeek: [1, 2, 3, 4, 5], // Mon–Fri default
         destination: { label: '', address: '', latitude: 0, longitude: 0 },
         prepMinutes: DEFAULT_PREP_MINUTES,
-        failsafeWakeTime: { hour: 7, minute: 30 },
         createdAt: now,
         updatedAt: now,
       };
@@ -194,10 +192,9 @@ export const useAlarmStore = create<AlarmStore>()(
       const { config, snoozeCount } = get();
       if (!config) return;
 
-      if (snoozeCount >= MAX_SNOOZE_COUNT) {
-        get().dismiss();
-        return;
-      }
+      // No-op when at the limit — the hook (use-alarm.ts) detects this case and
+      // calls performDismiss() instead, which cancels notifications and reschedules.
+      if (snoozeCount >= MAX_SNOOZE_COUNT) return;
 
       const newCount = snoozeCount + 1;
       const snoozeWake = new Date(Date.now() + SNOOZE_DURATION_MS);
@@ -206,35 +203,6 @@ export const useAlarmStore = create<AlarmStore>()(
 
       set({ status: 'snoozed', snoozeCount: newCount, lastCalculatedWakeTime: snoozeWake.toISOString() });
       AlarmStorage.writeState({ status: 'snoozed', snoozeCount: newCount, lastCalculatedWakeTime: snoozeWake.toISOString() });
-    },
-
-    dismiss() {
-      const { config, snoozeCount, lastCalculatedWakeTime } = get();
-      const firedAt = new Date().toISOString();
-
-      if (config && lastCalculatedWakeTime) {
-        HistoryStorage.append({
-          id: uuidv4(),
-          date: firedAt.slice(0, 10),
-          configuredArrivalTime: (() => {
-            const d = buildArrivalDate(config.arrivalTime);
-            return d.toISOString();
-          })(),
-          actualWakeTime: lastCalculatedWakeTime,
-          trafficDurationSeconds: 0, // updated by background task in practice
-          prepMinutes: config.prepMinutes,
-          outcome: snoozeCount > 0 ? 'snoozed' : 'dismissed',
-          snoozeCount,
-        });
-      }
-
-      const next: Partial<AlarmState> = {
-        status: 'dismissed',
-        snoozeCount: 0,
-        todayFiredAt: firedAt,
-      };
-      AlarmStorage.writeState(next);
-      set(next);
     },
 
     reset() {

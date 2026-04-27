@@ -120,8 +120,8 @@ describe('traffic-check-task guards', () => {
     jest.useFakeTimers();
     jest.setSystemTime(FIXED_NOW);
     jest.clearAllMocks();
-    // Default: inside monitoring window
-    mockReadState.mockReturnValue({ lastCalculatedWakeTime: WAKE_TIME_45MIN });
+    // Default: inside monitoring window, not yet fired today
+    mockReadState.mockReturnValue({ lastCalculatedWakeTime: WAKE_TIME_45MIN, todayFiredAt: null });
   });
 
   afterEach(() => jest.useRealTimers());
@@ -150,9 +150,41 @@ describe('traffic-check-task guards', () => {
     expect(mockFetchRoute).not.toHaveBeenCalled();
   });
 
+  it('returns NoData when alarm already fired today', async () => {
+    mockReadConfig.mockReturnValue(makeConfig());
+    const todayIso = FIXED_NOW.toISOString();
+    mockReadState.mockReturnValue({
+      lastCalculatedWakeTime: WAKE_TIME_45MIN,
+      todayFiredAt: todayIso, // same calendar day
+    });
+    const result = await capturedTaskFn!();
+    expect(result).toBe('noData');
+    expect(mockFetchRoute).not.toHaveBeenCalled();
+  });
+
+  it('proceeds normally when todayFiredAt is from a previous day', async () => {
+    mockReadConfig.mockReturnValue(makeConfig({ daysOfWeek: [] })); // one-off, passes DOW guard
+    const yesterday = new Date(FIXED_NOW.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    mockReadState.mockReturnValue({
+      lastCalculatedWakeTime: WAKE_TIME_45MIN,
+      todayFiredAt: yesterday,
+    });
+    mockFetchRoute.mockResolvedValue({
+      durationSeconds: 2700,
+      staticDurationSeconds: 2400,
+      distanceMeters: 15000,
+      fetchedAt: new Date().toISOString(),
+      checkpoint: 60,
+      isFailsafe: false,
+    });
+    const result = await capturedTaskFn!();
+    // Guard passed — task ran to completion
+    expect(result).not.toBe('noData');
+  });
+
   it('returns NoData when lastCalculatedWakeTime is null', async () => {
     mockReadConfig.mockReturnValue(makeConfig());
-    mockReadState.mockReturnValue({ lastCalculatedWakeTime: null });
+    mockReadState.mockReturnValue({ lastCalculatedWakeTime: null, todayFiredAt: null });
     const result = await capturedTaskFn!();
     expect(result).toBe('noData');
     expect(mockFetchRoute).not.toHaveBeenCalled();
@@ -187,7 +219,7 @@ describe('traffic-check-task happy path', () => {
     jest.setSystemTime(MONDAY_NOW);
     jest.clearAllMocks();
     mockReadConfig.mockReturnValue(makeConfig());
-    mockReadState.mockReturnValue({ lastCalculatedWakeTime: WAKE_TIME_IN_WINDOW });
+    mockReadState.mockReturnValue({ lastCalculatedWakeTime: WAKE_TIME_IN_WINDOW, todayFiredAt: null });
   });
 
   afterEach(() => jest.useRealTimers());
@@ -229,7 +261,7 @@ describe('traffic-check-task happy path', () => {
     //   traffic = 900s (15min), prep = 30min → totalBuffer = 45min → wake = 09:00 - 45min = 08:15 UTC
     //   Set WAKE to 08:15 + tiny offset so delta < 2min
     const nearWake = new Date(MONDAY_NOW.getTime() + 15 * 60 * 1000).toISOString(); // 08:15
-    mockReadState.mockReturnValue({ lastCalculatedWakeTime: nearWake });
+    mockReadState.mockReturnValue({ lastCalculatedWakeTime: nearWake, todayFiredAt: null });
     // traffic = 900s → wake = 09:00 - (900 + 1800)s = 09:00 - 2700s = 08:15 exactly
     mockFetchRoute.mockResolvedValue(makeTrafficResult(900));
 
@@ -276,7 +308,7 @@ describe('traffic-check-task wake time clamping', () => {
     // The task clamps: Math.max(rawWake, Date.now() + 10_000)
     // Wake is in window at 45min from now
     const wakeInWindow = new Date(MONDAY_NOW.getTime() + 45 * 60 * 1000).toISOString();
-    mockReadState.mockReturnValue({ lastCalculatedWakeTime: wakeInWindow });
+    mockReadState.mockReturnValue({ lastCalculatedWakeTime: wakeInWindow, todayFiredAt: null });
     // Huge traffic duration → past wake time
     mockFetchRoute.mockResolvedValue(makeTrafficResult(86400)); // 24hr commute
 

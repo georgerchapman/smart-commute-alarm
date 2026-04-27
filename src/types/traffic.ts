@@ -1,4 +1,4 @@
-export type TrafficCheckpoint = 60 | 30 | 10; // minutes before scheduled wake time
+export type TrafficCheckpoint = 60 | 15; // minutes before scheduled wake time (CON-2: two checks per day)
 
 export interface RouteRequest {
   originLatitude: number;

@@ -136,7 +136,6 @@ describe('Scenario D — Background task API call budget in the monitoring windo
     // Simulate task fires at T-65, T-60, T-45, T-30, T-15, T-0 (6 potential fires).
 
     const WAKE_TIME = new Date('2026-04-18T09:00:00.000Z');
-    const backgroundIntervalMs = BACKGROUND_FETCH_INTERVAL_SECONDS * 1000;
 
     // Simulate fires starting 65 min before wake time
     const firesMinutesBefore = [65, 60, 45, 30, 15, 0];
@@ -154,8 +153,8 @@ describe('Scenario D — Background task API call budget in the monitoring windo
     // T-65: outside window → no call
     // T-60: in window, checkpoint=60 → call
     // T-45: in window, checkpoint=60 → call
-    // T-30: in window, checkpoint=30 → call
-    // T-15: in window, checkpoint=10 → call
+    // T-30: in window, checkpoint=60 → call
+    // T-15: in window, checkpoint=15 → call
     // T-0: ms=0, isInMonitoringWindow=false → no call
     expect(callsInWindow).toBe(4);
   });
@@ -166,20 +165,21 @@ describe('Scenario D — Background task API call budget in the monitoring windo
     expect(firesInWindow).toBe(4);
   });
 
-  it('verifies resolveCheckpoint returns 60 for all times inside the window (sub-checkpoints reserved for future paid tiers)', () => {
+  it('verifies resolveCheckpoint returns 60 or 15 at the correct boundaries', () => {
     const WAKE = new Date('2026-04-18T09:00:00.000Z');
-    // The implementation iterates [60, 30, 10] descending and returns the first match
-    // (msUntilWake <= offset). Since 60-min offset is checked first, it always matches
-    // within the monitoring window — 30 and 10 are never returned in the current build.
+    // Two checkpoints per day (CON-2):
+    //   60 — early check: between 15 and 60 minutes before wake
+    //   15 — final check: within 15 minutes of wake
     const scenarios: Array<[number, number | null]> = [
-      [65, null],  // outside window → null
-      [60, 60],    // at 60-min boundary → 60
-      [45, 60],    // inside window → 60
-      [30, 60],    // inside window → 60 (not 30)
-      [15, 60],    // inside window → 60 (not 10)
-      [10, 60],    // inside window → 60 (not 10)
-      [5, 60],     // inside window → 60 (not 10)
-      [0, null],   // wake time has passed → null
+      [65, null],  // outside monitoring window → null
+      [60, 60],    // at 60-min boundary → early check
+      [45, 60],    // between 15–60 min → early check
+      [30, 60],    // between 15–60 min → early check
+      [16, 60],    // just above 15-min boundary → early check
+      [15, 15],    // at 15-min boundary → final check
+      [10, 15],    // within 15 min → final check
+      [5,  15],    // within 15 min → final check
+      [0,  null],  // wake time has passed → null
     ];
 
     for (const [minutesBefore, expectedCheckpoint] of scenarios) {

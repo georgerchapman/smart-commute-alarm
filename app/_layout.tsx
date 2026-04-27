@@ -14,6 +14,7 @@ import { useAlarmStore } from '@/src/stores/alarm-store';
 import { useSubscriptionStore } from '@/src/stores/subscription-store';
 import { registerBackgroundTasks } from '@/src/services/background/task-definitions';
 import { registerNotificationCategories } from '@/src/services/notifications/notification-service';
+import { handleNotificationResponse } from '@/src/services/notifications/notification-response-handler';
 import { PurchasesService } from '@/src/services/purchases/purchases-service';
 import { AlarmStorage } from '@/src/services/storage/alarm-storage';
 import type { NotificationPayload } from '@/src/types/notification';
@@ -73,26 +74,11 @@ export default function RootLayout() {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const { actionIdentifier, notification } = response;
       const payload = notification.request.content.data as unknown as NotificationPayload;
-
-      logger.ui(`[DEBUG] Notification response: action="${actionIdentifier}", payload.type="${payload?.type}"`);
-
-      if (actionIdentifier === 'DISMISS') {
-        // Cancel remaining burst, record history, reschedule for next occurrence
-        logger.ui('[DEBUG] DISMISS action — calling performDismiss()');
-        performDismiss().catch(() => {});
-      } else if (actionIdentifier === 'SNOOZE') {
-        // Show the in-app firing overlay so the user can snooze properly
-        logger.ui('[DEBUG] SNOOZE action — opening firing overlay');
-        setAlarmFiring();
-        router.push('/');
-      } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-        // User tapped the notification body — show firing overlay
-        if (payload?.type === 'alarm_fire' || payload?.type === 'snooze_recheck') {
-          logger.ui(`[DEBUG] DEFAULT tap on "${payload.type}" — opening firing overlay`);
-          setAlarmFiring();
-          router.push('/');
-        }
-      }
+      handleNotificationResponse(actionIdentifier, payload, {
+        onDismiss: () => performDismiss().catch(() => {}),
+        onFire: setAlarmFiring,
+        onNavigate: (route) => router.push(route as '/'),
+      });
     });
 
     return () => sub.remove();

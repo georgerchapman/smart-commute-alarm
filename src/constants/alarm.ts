@@ -1,11 +1,10 @@
 import type { TrafficCheckpoint } from '@/src/types/traffic';
 
 // Traffic check checkpoints — minutes before the scheduled wake time.
-// Paid tiers will allow more frequent / customisable intervals (to be designed).
+// CON-2: exactly two checks per alarm day (at 60 min and 15 min before wake time).
 export const BACKOFF_OFFSETS_MS: Record<TrafficCheckpoint, number> = {
   60: 60 * 60 * 1000,
-  30: 30 * 60 * 1000,
-  10: 10 * 60 * 1000,
+  15: 15 * 60 * 1000,
 };
 
 // Minimum change in wake time that warrants rescheduling the alarm notification

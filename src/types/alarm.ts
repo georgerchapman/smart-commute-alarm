@@ -24,10 +24,6 @@ export interface AlarmConfig {
   daysOfWeek: number[]; // 0=Sun…6=Sat; [] = one-off (next occurrence only)
   destination: Destination;
   prepMinutes: number; // user-configured preparation buffer, default 30
-  failsafeWakeTime: {
-    hour: number;
-    minute: number;
-  };
   calendarEventId?: string; // Phase 2: calendar sync
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
@@ -49,6 +45,6 @@ export interface AlarmHistoryEntry {
   actualWakeTime: string; // ISO 8601 — what the algorithm landed on
   trafficDurationSeconds: number;
   prepMinutes: number;
-  outcome: 'dismissed' | 'snoozed' | 'missed';
+  outcome: 'dismissed' | 'snoozed' | 'missed'; // 'missed' is V2: alarm fired but user never interacted
   snoozeCount: number;
 }

@@ -92,46 +92,40 @@ describe('resolveCheckpoint', () => {
     expect(resolveCheckpoint(now, wake)).toBe(60);
   });
 
-  it('returns 60 when between 30 and 60 minutes away', () => {
+  it('returns 60 when between 15 and 60 minutes away', () => {
     const now = new Date('2026-04-18T07:00:00Z');
     const wake = new Date(now.getTime() + 45 * 60 * 1000); // 45 min
     expect(resolveCheckpoint(now, wake)).toBe(60);
   });
 
-  // NOTE: The current implementation iterates checkpoints [60, 30, 10] in descending order
-  // and returns the FIRST cp where msUntilWake <= BACKOFF_OFFSETS_MS[cp].
-  // Since 60 min is the largest offset, ANY time within the monitoring window satisfies
-  // the cp=60 condition first, so the function always returns 60 within the window.
-  // Sub-checkpoints (30, 10) are reserved for future paid-tier customisation.
-
-  it('returns 60 (not 30) when exactly at the 30-minute mark', () => {
+  it('returns 60 when exactly at the 30-minute mark (above 15-min threshold)', () => {
     const now = new Date('2026-04-18T07:00:00Z');
-    const wake = new Date(now.getTime() + BACKOFF_OFFSETS_MS[30]);
+    const wake = new Date(now.getTime() + 30 * 60 * 1000);
     expect(resolveCheckpoint(now, wake)).toBe(60);
   });
 
-  it('returns 60 (not 30) when 20 minutes away', () => {
+  it('returns 60 when 20 minutes away (above 15-min threshold)', () => {
     const now = new Date('2026-04-18T07:00:00Z');
     const wake = new Date(now.getTime() + 20 * 60 * 1000);
     expect(resolveCheckpoint(now, wake)).toBe(60);
   });
 
-  it('returns 60 (not 10) when exactly at the 10-minute mark', () => {
+  it('returns 15 when exactly at the 15-minute boundary', () => {
     const now = new Date('2026-04-18T07:00:00Z');
-    const wake = new Date(now.getTime() + BACKOFF_OFFSETS_MS[10]);
-    expect(resolveCheckpoint(now, wake)).toBe(60);
+    const wake = new Date(now.getTime() + BACKOFF_OFFSETS_MS[15]);
+    expect(resolveCheckpoint(now, wake)).toBe(15);
   });
 
-  it('returns 60 (not 10) when less than 10 minutes away', () => {
+  it('returns 15 when within 15 minutes of wake time', () => {
     const now = new Date('2026-04-18T07:00:00Z');
-    const wake = new Date(now.getTime() + 5 * 60 * 1000);
-    expect(resolveCheckpoint(now, wake)).toBe(60);
+    const wake = new Date(now.getTime() + 10 * 60 * 1000); // 10 min
+    expect(resolveCheckpoint(now, wake)).toBe(15);
   });
 
-  it('returns 60 when 1ms before wake time', () => {
+  it('returns 15 when 1ms before wake time', () => {
     const now = new Date('2026-04-18T07:00:00Z');
     const wake = new Date(now.getTime() + 1);
-    expect(resolveCheckpoint(now, wake)).toBe(60);
+    expect(resolveCheckpoint(now, wake)).toBe(15);
   });
 });
 

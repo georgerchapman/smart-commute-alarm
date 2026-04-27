@@ -33,7 +33,6 @@ function makeConfig(overrides: object = {}) {
     daysOfWeek: [1, 2, 3, 4, 5],
     destination: { latitude: 51.5155, longitude: -0.0922, label: 'Work', address: '1 Main St' },
     prepMinutes: 30,
-    failsafeWakeTime: { hour: 7, minute: 30 },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
@@ -141,23 +140,26 @@ describe('alarm-store: snooze', () => {
     expect(wakeMs).toBe(Date.now() + SNOOZE_DURATION_MS);
   });
 
-  it(`auto-dismisses when snoozeCount already equals MAX_SNOOZE_COUNT (${MAX_SNOOZE_COUNT})`, () => {
-    useAlarmStore.setState({ snoozeCount: MAX_SNOOZE_COUNT });
+  it(`is a no-op at MAX_SNOOZE_COUNT — hook calls performDismiss instead`, () => {
+    useAlarmStore.setState({ snoozeCount: MAX_SNOOZE_COUNT, status: 'firing' });
     useAlarmStore.getState().snooze();
-    // Should call dismiss() instead — status becomes 'dismissed', count reset
-    expect(useAlarmStore.getState().status).toBe('dismissed');
+    // Store does nothing — the use-alarm hook detects snoozeCount >= MAX and
+    // calls performDismiss(), which handles cancellation and reschedule.
+    expect(useAlarmStore.getState().snoozeCount).toBe(MAX_SNOOZE_COUNT);
+    expect(useAlarmStore.getState().status).toBe('firing'); // unchanged by store
   });
 
-  it('allows exactly MAX_SNOOZE_COUNT snoozes before auto-dismiss', () => {
+  it('increments up to MAX_SNOOZE_COUNT, then becomes a no-op', () => {
     for (let i = 0; i < MAX_SNOOZE_COUNT; i++) {
       useAlarmStore.getState().snooze();
     }
     expect(useAlarmStore.getState().snoozeCount).toBe(MAX_SNOOZE_COUNT);
     expect(useAlarmStore.getState().status).toBe('snoozed');
 
-    // One more → auto-dismiss
+    // Store no-op — hook promotes this to performDismiss
     useAlarmStore.getState().snooze();
-    expect(useAlarmStore.getState().status).toBe('dismissed');
+    expect(useAlarmStore.getState().snoozeCount).toBe(MAX_SNOOZE_COUNT); // unchanged
+    expect(useAlarmStore.getState().status).toBe('snoozed'); // unchanged
   });
 });
 

@@ -11,7 +11,7 @@
 | ID | Constraint | Detail |
 |---|---|---|
 | CON-1 | Silent mode bypass | On iOS, third-party apps are restricted. Use `AVAudioSession` category `Playback` to ensure the alarm sounds even when the physical ringer switch is off. |
-| CON-2 | API throttling | Limit Google Maps Routes API calls to avoid billing. V1 targets two checks per alarm day: one at 60 minutes before nominal wake time, one at 15 minutes before. |
+| CON-2 | API throttling | Limit Google Maps Routes API calls to avoid billing. V1 targets two checks per alarm day: one at 60 minutes before wake time (`TrafficCheckpoint = 60`), one at 15 minutes before (`TrafficCheckpoint = 15`). Calls within each window are deduplicated by an in-memory 5-minute route cache. |
 
 ---
 
@@ -78,7 +78,7 @@
 
 - [ ] **AC-3.2.1** When live traffic duration exceeds the current estimate by more than 120 seconds, the alarm is rescheduled earlier.
 - [ ] **AC-3.2.2** When live traffic duration is within 120 seconds of the current estimate, no reschedule occurs (avoids churn).
-- [ ] **AC-3.2.3** Traffic checks occur at two checkpoints: 60 minutes and 15 minutes before nominal wake time.
+- [ ] **AC-3.2.3** Traffic checks occur at two checkpoints: 60 minutes (`checkpoint=60`) and 15 minutes (`checkpoint=15`) before wake time. Background task fires every 15 min but only calls the API at these two distinct intervals; cache deduplicates within each window.
 - [ ] **AC-3.2.4** The wake time is never set to a time in the past; it is clamped to at least `now + 10s` if the calculated time has already passed.
 - [ ] **AC-3.2.5** Changing `prepMinutes` adjusts the wake time by the exact difference (e.g. 30 to 45 min adds 15 min buffer).
 
@@ -164,7 +164,7 @@
 - [ ] **AC-6.1.2** Status transitions to `idle`.
 - [ ] **AC-6.1.3** `lastCalculatedWakeTime` is cleared to `null`.
 - [ ] **AC-6.1.4** All scheduled notifications are cancelled (including orphans).
-- [ ] **AC-6.1.5** A history entry is recorded with the correct outcome (`dismissed` or `snoozed`).
+- [ ] **AC-6.1.5** A history entry is recorded with the correct outcome (`dismissed` or `snoozed`). Note: `missed` outcome (alarm fired, user never interacted) is V2 — detection logic not yet implemented.
 
 ### REQ-6.2 Dismiss (Recurring Alarm)
 

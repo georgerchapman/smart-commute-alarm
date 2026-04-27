@@ -29,12 +29,15 @@ export function shouldReschedule(currentWakeTime: Date, newWakeTime: Date): bool
 }
 
 /**
- * Returns the active checkpoint (60 / 30 / 10 min) based on how far away the
+ * Returns the active checkpoint (60 or 15 min) based on how far away the
  * scheduled wake time is, or null if the wake time has already passed or is
  * more than 60 minutes away (outside the monitoring window).
  *
+ * Returns 15 when within 15 minutes of wake time (the "final check" window).
+ * Returns 60 when between 15 and 60 minutes away (the "early check" window).
+ * Returns null outside the monitoring window.
+ *
  * All checkpoints are relative to the *wake time*, not the arrival time.
- * This means traffic checks start at T_wake − 60 min regardless of journey length.
  */
 export function resolveCheckpoint(
   now: Date,
@@ -42,17 +45,18 @@ export function resolveCheckpoint(
 ): TrafficCheckpoint | null {
   const msUntilWake = wakeTime.getTime() - now.getTime();
 
-  if (msUntilWake <= 0) return null; // wake time has already passed
+  if (msUntilWake <= 0 || msUntilWake > BACKOFF_OFFSETS_MS[60]) return null;
 
-  const checkpoints: TrafficCheckpoint[] = [60, 30, 10];
-
+  // Iterate ascending — return the smallest applicable checkpoint.
+  // Within 15 min → returns 15; between 15–60 min → returns 60.
+  const checkpoints: TrafficCheckpoint[] = [15, 60];
   for (const cp of checkpoints) {
     if (msUntilWake <= BACKOFF_OFFSETS_MS[cp]) {
       return cp;
     }
   }
 
-  return null; // more than 60 minutes away — not yet in monitoring window
+  return null;
 }
 
 /**

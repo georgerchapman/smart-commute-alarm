@@ -1,9 +1,9 @@
 # SyncWake V1 Verification Report
 
-**Date:** 2026-04-24
+**Date:** 2026-04-27 (updated from initial 2026-04-24 report)
 **Tester:** George Chapman + Claude (AI pair)
 **Platform:** iOS 15.6 via Expo Go
-**Commit:** `eb2d37f` (includes all bug fixes)
+**Commit:** `eb2d37f` (initial bug fixes); subsequent fixes in next commit
 **Test methods:** Automated unit/integration tests (Jest) + manual UI testing in Expo Go with debug log monitoring
 
 ---
@@ -32,7 +32,7 @@ These limitations affect which acceptance criteria can be fully verified:
 
 ## Automated Test Results
 
-**8/8 suites passing, 143/143 tests green.**
+**9/9 suites passing, 155/155 tests green.**
 
 | Suite | File | Tests | Result |
 |---|---|---|---|
@@ -42,8 +42,9 @@ These limitations affect which acceptance criteria can be fully verified:
 | Routes API | `services/maps/routes-api.test.ts` | 8 | PASS |
 | Routes cache | `services/maps/routes-cache.test.ts` | 10 | PASS |
 | Notification service | `services/notifications/notification-service.test.ts` | 15 | PASS |
-| Background traffic check | `services/background/traffic-check-task.test.ts` | 42 | PASS |
-| API call count integration | `integration/api-call-counts.test.ts` | 18 | PASS |
+| Notification response handler | `services/notifications/notification-response-handler.test.ts` | 9 | PASS |
+| Background traffic check | `services/background/traffic-check-task.test.ts` | 44 | PASS |
+| API call count integration | `integration/api-call-counts.test.ts` | 19 | PASS |
 
 ---
 
@@ -67,7 +68,7 @@ These limitations affect which acceptance criteria can be fully verified:
 |---|---|---|---|
 | AC-1.2.1 Permission requested during onboarding | UI test (Phase A) | PASS | Onboarding prompts for location permission. Log: `bootstrap() start` through `bootstrap() complete`. |
 | AC-1.2.2 No crash when permission granted | UI test (Phase A, D) | PASS | App proceeds to dashboard, alarm enables and fetches traffic successfully. |
-| AC-1.2.3 No crash when permission denied | UI test (Phase I, airplane mode) | PASS | Traffic refresh fails gracefully with logged warning; alarm fires at nominal time. |
+| AC-1.2.3 No crash when permission denied | UI test (Phase I, airplane mode) | PARTIAL | Network failure (airplane mode) tested and passed. Explicit permission-denial path (user taps "Deny" in OS dialog) was not separately tested — the `locStatus !== 'granted'` early-return branch is present in code but not UI-verified. |
 
 **Verdict: PASS**
 
@@ -105,7 +106,7 @@ Session persistence was verified: navigating between tabs and screens retained a
 |---|---|---|---|
 | AC-3.2.1 Reschedule when delta > 120s | Unit test (`backoff.test.ts`: `shouldReschedule`); UI test (Phase E) | PASS | `shouldReschedule` returns `true` at 121s delta. Live traffic of 150 min (vs 159 min nominal) triggered reschedule. |
 | AC-3.2.2 No reschedule when delta <= 120s | Unit test (`backoff.test.ts`) | PASS | `shouldReschedule` returns `false` at 120s delta. |
-| AC-3.2.3 Checks at 60-min and 15-min checkpoints | Unit test (`backoff.test.ts`: `resolveCheckpoint`) | PASS | Returns correct checkpoint boundaries. |
+| AC-3.2.3 Checks at 60-min and 15-min checkpoints | Unit test (`backoff.test.ts`: `resolveCheckpoint`) | PASS | `resolveCheckpoint` returns 60 when 15–60 min away, 15 when within 15 min. Previously the implementation used 60/30/10 — corrected to 60/15 per spec. |
 | AC-3.2.4 Wake time clamped to now+10s minimum | UI test (Phase J1); unit test | PASS | Log: `Initial wake time — raw: ... (CLAMPED — raw was in the past)`. Failsafe clamp to `Date.now() + 10_000` applied. |
 | AC-3.2.5 prepMinutes adjusts wake time exactly | Unit test (`alarm-store.test.ts`: settings interactions) | PASS | `wake30 - wake45 = 15 * 60 * 1000` (exactly 15 minutes). |
 
@@ -281,6 +282,59 @@ All 5 bugs were discovered during UI testing, fixed in commit `eb2d37f`, and re-
 
 ---
 
+---
+
+## Second-Pass Fixes (Post-Report Analysis)
+
+A follow-up analysis against the requirements and codebase found 6 additional issues. All resolved in the same commit.
+
+### FIX 1: Traffic checkpoints were 60/30/10, not 60/15 per CON-2
+
+| Field | Detail |
+|---|---|
+| **Severity** | Medium |
+| **Files** | `src/types/traffic.ts`, `src/constants/alarm.ts`, `src/utils/backoff.ts` |
+| **Root cause** | `TrafficCheckpoint = 60 | 30 | 10`. The 30 and 10 offsets were dead code (logic always returned 60 within the window). Requirements specify exactly two checks: T-60 and T-15. |
+| **Fix** | Changed type to `60 | 15`, updated `BACKOFF_OFFSETS_MS`, and fixed `resolveCheckpoint` to iterate ascending so it correctly returns 15 when within 15 min of wake time. |
+
+### FIX 2 & 3: Auto-dismiss didn't cancel notifications or reschedule recurring alarm
+
+| Field | Detail |
+|---|---|
+| **Severity** | High |
+| **Files** | `src/stores/alarm-store.ts`, `src/hooks/use-alarm.ts` |
+| **Root cause** | `snooze()` called `dismiss()` at max count. `dismiss()` only updated state — it did not cancel the notification burst (leaving orphan rings) or call `rescheduleForNextDay()` (stranding recurring alarms in `dismissed` state). |
+| **Fix** | `snooze()` in the store is now a no-op at max count. The `use-alarm` hook detects `snoozeCount >= MAX_SNOOZE_COUNT` before calling `store.snooze()` and routes through `store.performDismiss()` instead. `dismiss()` removed from the store. |
+
+### FIX 4: `todayFiredAt` was written but never read
+
+| Field | Detail |
+|---|---|
+| **Severity** | Medium |
+| **Files** | `src/services/background/traffic-check-task.ts` |
+| **Root cause** | `AlarmState.todayFiredAt` was set on dismiss with the intent of preventing double-firing, but the background task never checked it. A second task fire within the same day after dismissal could reschedule the alarm. |
+| **Fix** | Added guard at the top of the background task: if `todayFiredAt` is today's date, return `NoData` immediately. |
+
+### FIX 5: `failsafeWakeTime` config field was dead code
+
+| Field | Detail |
+|---|---|
+| **Severity** | Low |
+| **Files** | `src/types/alarm.ts`, `src/stores/alarm-store.ts` |
+| **Root cause** | `AlarmConfig.failsafeWakeTime` (default 07:30) was defined but never read. The actual failsafe is `now + 10s` clamping and `FALLBACK_COMMUTE_SECONDS`. |
+| **Fix** | Removed from type and default config. |
+
+### FIX 6: No automated test for lock-screen notification actions
+
+| Field | Detail |
+|---|---|
+| **Severity** | Medium |
+| **Files** | New: `src/services/notifications/notification-response-handler.ts`, `src/__tests__/services/notifications/notification-response-handler.test.ts` |
+| **Root cause** | The SNOOZE/DISMISS/DEFAULT notification response logic in `_layout.tsx` had no unit tests. |
+| **Fix** | Extracted action-routing logic to `handleNotificationResponse()`, added 9 unit tests covering all action paths. `_layout.tsx` now uses the extracted function. |
+
+---
+
 ## Deferred Items (Require Dev Build)
 
 | Item | Reason | Tracking |
@@ -288,3 +342,5 @@ All 5 bugs were discovered during UI testing, fixed in commit `eb2d37f`, and re-
 | AC-2.1.1/2/3 Force-close persistence | Expo Go uses in-memory storage shim; MMKV requires native module | Test after migrating to dev build |
 | AC-4.1.4 Silent-mode bypass | `AVAudioSession` category `Playback` requires native audio config | Test after adding native audio module |
 | AC-1.1.1/2 Full background execution | iOS throttles `BGTaskScheduler` in Expo Go | Test in dev build with real background fetch |
+| AC-1.2.3 Permission-denial path | Tested via airplane mode (network failure), not OS permission denial dialog | Retest in dev build by revoking location permission |
+| `'missed'` history outcome | Requires detecting alarm-fired-but-no-interaction, which needs a timeout/background check | V2 implementation |

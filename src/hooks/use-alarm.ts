@@ -4,7 +4,7 @@ import { useTrafficStore } from '@/src/stores/traffic-store';
 import { NotificationService } from '@/src/services/notifications/notification-service';
 import { buildArrivalDate } from '@/src/utils/time';
 import { calculateWakeTime } from '@/src/utils/backoff';
-import { FALLBACK_COMMUTE_SECONDS } from '@/src/constants/alarm';
+import { FALLBACK_COMMUTE_SECONDS, MAX_SNOOZE_COUNT } from '@/src/constants/alarm';
 import type { AlarmConfig } from '@/src/types/alarm';
 import { logger } from '@/src/utils/logger';
 
@@ -63,11 +63,19 @@ export function useAlarm() {
   );
 
   const snooze = useCallback(async () => {
-    const { config } = store;
+    const { config, snoozeCount } = useAlarmStore.getState();
     if (!config) return;
 
-    logger.ui('Snooze tapped — scheduling fixed 540s interval');
+    // When max snoozes are exhausted, route through performDismiss so that:
+    //   (a) the remaining notification burst is fully cancelled, and
+    //   (b) a recurring alarm is rescheduled for the next day.
+    if (snoozeCount >= MAX_SNOOZE_COUNT) {
+      logger.ui(`Snooze tapped at limit (${snoozeCount}/${MAX_SNOOZE_COUNT}) — auto-dismissing via performDismiss`);
+      await store.performDismiss(lastTrafficResult?.durationSeconds);
+      return;
+    }
 
+    logger.ui('Snooze tapped — scheduling fixed 540s interval');
     store.snooze();
 
     // Read the updated wake time directly from the store (not the React closure)
@@ -81,7 +89,7 @@ export function useAlarm() {
         wakeTime: updatedWakeTime,
       });
     }
-  }, [store]);
+  }, [store, lastTrafficResult]);
 
   const dismiss = useCallback(async () => {
     logger.ui(`Dismiss tapped — last traffic: ${lastTrafficResult ? `${lastTrafficResult.durationSeconds}s (${Math.round(lastTrafficResult.durationSeconds / 60)} min)` : 'none'}`);

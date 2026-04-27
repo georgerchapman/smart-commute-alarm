@@ -48,6 +48,17 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
     }
 
     const state = AlarmStorage.readState();
+
+    // Double-fire guard: if the alarm already fired today, skip until tomorrow.
+    if (state.todayFiredAt) {
+      const firedDate = state.todayFiredAt.slice(0, 10); // YYYY-MM-DD
+      const today = now.toISOString().slice(0, 10);
+      if (firedDate === today) {
+        logger.bg(`Guard: alarm already fired today (${firedDate}) — returning NoData`);
+        return BackgroundFetch.BackgroundFetchResult.NoData;
+      }
+    }
+
     const wakeTime = state.lastCalculatedWakeTime
       ? new Date(state.lastCalculatedWakeTime)
       : null;
