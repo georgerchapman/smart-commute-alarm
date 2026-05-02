@@ -1,0 +1,20 @@
+APPLE CRITICAL ALERTS ENTITLEMENT REQUEST
+==========================================
+
+DESCRIBE YOUR APP
+-----------------
+SyncWake is a smart commute alarm for iOS. Unlike a standard alarm clock, SyncWake monitors live traffic conditions and automatically adjusts the user's wake-up time when their commute is longer than normal — ensuring they always have enough time to reach work or appointments. The user configures a destination, arrival time, and preparation buffer. SyncWake checks live route duration at two scheduled points before the alarm fires and moves the wake time earlier if needed. The alarm notification is the single daily event the user is relying on to start their day on time.
+
+
+WHAT TYPE OF NOTIFICATIONS WILL YOU SEND AS CRITICAL ALERTS?
+-------------------------------------------------------------
+SyncWake uses Critical Alerts exclusively for the alarm itself — the notification that wakes the user at their calculated wake-up time. Up to 8 notifications are sent at 30-second intervals to simulate a ringing alarm; they stop when the user taps Snooze or Dismiss on the lock screen. No other notifications in the app use the Critical Alert interruption level. There are no marketing, engagement, or informational notifications of any kind.
+
+
+EXPLAIN WHY YOU NEED THIS ENTITLEMENT AND HOW IT WILL BE USED IN YOUR APP
+--------------------------------------------------------------------------
+SyncWake's alarm must fire reliably during sleeping hours — precisely when iPhone users leave their ringer switch in silent mode. Without Critical Alerts, the alarm notification is suppressed by the ringer switch and the user sleeps through it. This is not an edge case: silent mode overnight is standard behaviour for a large proportion of iPhone users, and it is the exact scenario the alarm needs to be dependable in.
+
+This alarm is not a reminder or a push notification the user might be happy to miss. The user has explicitly configured it, set a destination and arrival time, and is trusting SyncWake to wake them at the precise moment needed to reach that destination on time. Because SyncWake dynamically adjusts the wake time based on live traffic — rather than a fixed time the user sets themselves — the user cannot add their own safety margin. They are fully dependent on the notification firing audibly.
+
+The entitlement will be used in one place only: the alarm-fire notification burst at the user's scheduled wake time. It will never be applied to traffic status updates, background task results, or any other notification. The user has explicit, active control — they configure the alarm, they can disable it at any time — and the Critical Alert fires only at the moment they have asked to be woken up.

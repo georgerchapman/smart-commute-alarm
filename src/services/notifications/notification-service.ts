@@ -75,7 +75,12 @@ export const NotificationService = {
     const baseContent = {
       data: payload as unknown as Record<string, unknown>,
       sound: true,
-      ...(Platform.OS === 'ios' ? { categoryIdentifier: ALARM_CATEGORY_ID } : {}),
+      ...(Platform.OS === 'ios' ? {
+        categoryIdentifier: ALARM_CATEGORY_ID,
+        // Bypasses the ringer switch on iOS (requires Critical Alerts entitlement).
+        // In Expo Go this has no effect; verified in dev build.
+        interruptionLevel: 'critical' as const,
+      } : {}),
     };
 
     // iOS requires trigger dates to be strictly in the future.

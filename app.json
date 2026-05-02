@@ -16,15 +16,11 @@
         "NSLocationWhenInUseUsageDescription": "SyncWake uses your location to calculate your live commute time.",
         "UIBackgroundModes": [
           "fetch",
-          "remote-notification",
-          "fetch",
           "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "entitlements": {
-        "com.apple.developer.usernotifications.critical-alerts": true
-      }
+      "entitlements": {}
     },
     "android": {
       "package": "com.syncwake.app",
