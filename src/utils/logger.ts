@@ -1,11 +1,13 @@
 const isDev = __DEV__;
 
-// Category tags make it easy to grep specific subsystems in the Expo Go terminal:
+// Category tags make it easy to grep specific subsystems in the Metro terminal:
 //   grep "\[SW:UI\]"      → user interactions
 //   grep "\[SW:ALARM\]"   → alarm state transitions
 //   grep "\[SW:TRAFFIC\]" → traffic API calls and decisions
 //   grep "\[SW:NOTIF\]"   → notification scheduling / cancellation
 //   grep "\[SW:BG\]"      → background task execution
+//   grep "\[SW:AUDIO\]"   → audio playback / AVAudioSession
+//   grep "\[SW:BEDSIDE\]" → bedside mode transitions
 //   grep "\[SW:INFO\]"    → general info
 //   grep "\[SW:WARN\]"    → warnings
 //   grep "\[SW:ERR\]"     → errors
@@ -37,5 +39,11 @@ export const logger = {
   },
   bg: (message: string, ...args: unknown[]) => {
     if (isDev) console.info(`[SW:BG]    ${message}`, ...args);
+  },
+  audio: (message: string, ...args: unknown[]) => {
+    if (isDev) console.info(`[SW:AUDIO]   ${message}`, ...args);
+  },
+  bedside: (message: string, ...args: unknown[]) => {
+    if (isDev) console.info(`[SW:BEDSIDE] ${message}`, ...args);
   },
 };

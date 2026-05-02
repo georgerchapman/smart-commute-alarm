@@ -1,37 +1,14 @@
-// NOTE: In-memory shim replacing react-native-mmkv for Expo Go compatibility.
-// Data does not persist across restarts. Swap back to MMKV for the dev build.
+import { createMMKV } from 'react-native-mmkv';
 import type { AlarmConfig, AlarmState, AlarmHistoryEntry } from '@/src/types/alarm';
 
-function createMemoryStore() {
-  const _store = new Map<string, string | boolean>();
-  return {
-    getString(key: string): string | undefined {
-      const v = _store.get(key);
-      return typeof v === 'string' ? v : undefined;
-    },
-    getBoolean(key: string): boolean | undefined {
-      const v = _store.get(key);
-      return typeof v === 'boolean' ? v : undefined;
-    },
-    set(key: string, value: string | boolean): void {
-      _store.set(key, value);
-    },
-    remove(key: string): void {
-      _store.delete(key);
-    },
-    contains(key: string): boolean {
-      return _store.has(key);
-    },
-  };
-}
-
-const storage = createMemoryStore();
+const storage = createMMKV({ id: 'alarm-storage' });
 
 const KEYS = {
   CONFIG: 'alarm_config',
   STATE: 'alarm_state',
   SCHEDULED_NOTIFICATION_PREFIX: 'scheduled_notif_',
   HAS_SEEN_ONBOARDING: 'has_seen_onboarding',
+  LAST_KNOWN_LOCATION: 'last_known_location',
 } as const;
 
 export const AlarmStorage = {
@@ -113,6 +90,27 @@ export const AlarmStorage = {
     storage.remove(`${KEYS.SCHEDULED_NOTIFICATION_PREFIX}${alarmId}`);
   },
 
+  // ─── Last Known Location ──────────────────────────────────────────────────
+  // Used by the background traffic task (which cannot access live location
+  // after switching from "Always" to "When In Use" location permissions).
+
+  readLastKnownLocation(): { latitude: number; longitude: number; fetchedAt: string } | null {
+    const raw = storage.getString(KEYS.LAST_KNOWN_LOCATION);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  },
+
+  writeLastKnownLocation(latitude: number, longitude: number): void {
+    storage.set(
+      KEYS.LAST_KNOWN_LOCATION,
+      JSON.stringify({ latitude, longitude, fetchedAt: new Date().toISOString() })
+    );
+  },
+
   // ─── Onboarding ───────────────────────────────────────────────────────────
 
   hasSeenOnboarding(): boolean {
@@ -124,8 +122,9 @@ export const AlarmStorage = {
   },
 };
 
-// Separate in-memory store for history (mirrors the MMKV instance)
-const historyStorage = createMemoryStore();
+// ─── History ─────────────────────────────────────────────────────────────────
+
+const historyStorage = createMMKV({ id: 'alarm-history' });
 
 const HISTORY_KEY = 'alarm_history';
 const MAX_HISTORY_ENTRIES = 90; // ~3 months

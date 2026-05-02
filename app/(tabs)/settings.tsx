@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { DestinationPicker } from '@/components/destination/destination-picker';
 import { PrepTimeSlider } from '@/components/settings/prep-time-slider';
+import { AlarmSoundPicker } from '@/components/settings/alarm-sound-picker';
 import { PermissionStatusRow } from '@/components/settings/permission-status-row';
 import { useAlarm } from '@/src/hooks/use-alarm';
 import { usePermissions } from '@/src/hooks/use-permissions';
@@ -54,6 +55,17 @@ export default function SettingsScreen() {
           />
         </Section>
 
+        {/* Alarm Sound */}
+        <Section title="Alarm Sound" border={border} bg={cardBg}>
+          <AlarmSoundPicker
+            value={config?.alarmSoundId}
+            onChange={(alarmSoundId) => {
+              logger.ui(`[DEBUG] Alarm sound changed: ${alarmSoundId}`);
+              updateConfig({ alarmSoundId });
+            }}
+          />
+        </Section>
+
         {/* Schedule */}
         <Section title="Schedule" border={border} bg={cardBg}>
           <DayPicker
@@ -77,15 +89,9 @@ export default function SettingsScreen() {
                 label="Notifications"
                 status={statuses.notifications}
               />
-              {Platform.OS === 'ios' && (
-                <PermissionStatusRow
-                  label="Critical Alerts"
-                  status={statuses.criticalAlerts}
-                />
-              )}
               <PermissionStatusRow
-                label="Location (Always)"
-                status={statuses.locationBackground}
+                label="Location"
+                status={statuses.locationForeground}
               />
               {Platform.OS === 'android' && (
                 <PermissionStatusRow

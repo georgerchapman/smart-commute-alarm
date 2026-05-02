@@ -5,7 +5,6 @@
  */
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
-import * as Location from 'expo-location';
 import { TRAFFIC_CHECK_TASK } from './task-definitions';
 import { AlarmStorage } from '@/src/services/storage/alarm-storage';
 import { NotificationService } from '@/src/services/notifications/notification-service';
@@ -84,12 +83,23 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
 
     logger.bg(`Proceeding: checkpoint=${checkpoint} min, dest="${config.destination.label}", arrival=${config.arrivalTime.hour}:${String(config.arrivalTime.minute).padStart(2,'0')}`);
 
-    // Get current location for origin
-    logger.bg('Acquiring current location...');
-    const locationResult = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-    logger.bg(`Location acquired: ${locationResult.coords.latitude.toFixed(4)},${locationResult.coords.longitude.toFixed(4)} (accuracy: ${locationResult.coords.accuracy?.toFixed(0)}m)`);
+    // Use the last known location cached by the foreground app.
+    // Background location permission is no longer requested (app stays in foreground
+    // via Bedside Mode). If no cached location is available, skip the traffic check
+    // and let the alarm fire at the last calculated time (fail-safe behaviour).
+    const cachedLocation = AlarmStorage.readLastKnownLocation();
+    if (!cachedLocation) {
+      logger.bg('No cached location available — skipping traffic check (alarm will fire at last calculated time)');
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+    const locationAgeMin = Math.round(
+      (Date.now() - new Date(cachedLocation.fetchedAt).getTime()) / 60_000
+    );
+    if (locationAgeMin > 120) {
+      logger.bg(`Cached location is ${locationAgeMin} min old (> 2h) — skipping traffic check`);
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+    logger.bg(`Using cached location (age: ${locationAgeMin} min): ${cachedLocation.latitude.toFixed(4)},${cachedLocation.longitude.toFixed(4)}`);
 
     const arrivalTime = buildArrivalDate(config.arrivalTime);
 
@@ -97,8 +107,8 @@ TaskManager.defineTask(TRAFFIC_CHECK_TASK, async () => {
     try {
       trafficResult = await fetchRoute(
         {
-          originLatitude: locationResult.coords.latitude,
-          originLongitude: locationResult.coords.longitude,
+          originLatitude: cachedLocation.latitude,
+          originLongitude: cachedLocation.longitude,
           destinationLatitude: config.destination.latitude,
           destinationLongitude: config.destination.longitude,
           arrivalTime: arrivalTime.toISOString(),

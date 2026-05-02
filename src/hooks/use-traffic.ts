@@ -3,6 +3,7 @@ import { useTrafficStore } from '@/src/stores/traffic-store';
 import { useAlarmStore } from '@/src/stores/alarm-store';
 import { fetchRoute, RoutesFetchError } from '@/src/services/maps/routes-api';
 import { NotificationService } from '@/src/services/notifications/notification-service';
+import { AlarmStorage } from '@/src/services/storage/alarm-storage';
 import { buildArrivalDate } from '@/src/utils/time';
 import { calculateWakeTime, shouldReschedule } from '@/src/utils/backoff';
 import type { TrafficResult } from '@/src/types/traffic';
@@ -48,6 +49,11 @@ export function useTraffic() {
           60
         );
         trafficStore.setResult(result);
+
+        // Cache the origin for the background task (which can no longer fetch live
+        // location after we removed background location permission).
+        AlarmStorage.writeLastKnownLocation(originLat, originLng);
+        logger.traffic(`Cached origin location for background task: ${originLat.toFixed(4)},${originLng.toFixed(4)}`);
 
         // When the alarm is active, compare the live wake time against the
         // currently scheduled one and reschedule if it has moved meaningfully.

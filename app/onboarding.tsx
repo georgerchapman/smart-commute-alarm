@@ -16,6 +16,8 @@ type Step = {
   title: string;
   body: string;
   action: string;
+  /** When true, the "Skip for now" link is hidden — user must tap the action button. */
+  required?: boolean;
   platform?: 'ios' | 'android';
 };
 
@@ -28,10 +30,11 @@ const STEPS: Step[] = [
   },
   ...(Platform.OS === 'ios'
     ? [{
-        icon: 'exclamationmark.circle.fill',
-        title: 'Never sleep through it',
-        body: 'Critical Alerts let your alarm ring even when Do Not Disturb or silent mode is on.',
-        action: 'Allow Critical Alerts',
+        icon: 'speaker.slash.fill',
+        title: 'Leave the ringer on',
+        body: "SyncWake plays your alarm through the app — not a notification. For the alarm to sound, the app must be open and the ringer switch must be ON.\n\nPlug in overnight and leave the app open on your bedside table.",
+        action: 'I Understand',
+        required: true,
         platform: 'ios' as const,
       }]
     : []),
@@ -40,12 +43,6 @@ const STEPS: Step[] = [
     title: 'Live commute times',
     body: 'SyncWake uses your location to calculate how long it will take to reach your destination.',
     action: 'Allow Location',
-  },
-  {
-    icon: 'location.circle.fill',
-    title: 'Background tracking',
-    body: 'To check traffic while the app is closed, SyncWake needs "Always" location access.',
-    action: 'Allow Always',
   },
   ...(Platform.OS === 'android'
     ? [{
@@ -71,7 +68,7 @@ export default function OnboardingScreen() {
   const handleAction = async () => {
     logger.ui(`[DEBUG] Onboarding step ${stepIndex + 1}/${STEPS.length}: "${currentStep.action}" tapped`);
     if (stepIndex === 0) {
-      // Request all permissions in sequence on first tap
+      // Request notification permission on first tap
       await requestAll();
     }
 
@@ -126,11 +123,14 @@ export default function OnboardingScreen() {
             </ThemedText>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
-            <ThemedText style={styles.skipText}>
-              {isLast ? 'Done' : 'Skip for now'}
-            </ThemedText>
-          </TouchableOpacity>
+          {/* Hide skip on required steps (e.g. the mute switch warning) */}
+          {!currentStep.required && (
+            <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
+              <ThemedText style={styles.skipText}>
+                {isLast ? 'Done' : 'Skip for now'}
+              </ThemedText>
+            </TouchableOpacity>
+          )}
         </View>
       </ThemedView>
     </SafeAreaView>

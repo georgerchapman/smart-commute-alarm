@@ -21,6 +21,7 @@ import {
   SNOOZE_DURATION_MS,
   FALLBACK_COMMUTE_SECONDS,
 } from '@/src/constants/alarm';
+import { DEFAULT_ALARM_SOUND_ID } from '@/src/constants/alarm-sounds';
 import { NotificationService } from '@/src/services/notifications/notification-service';
 import { logger } from '@/src/utils/logger';
 
@@ -72,6 +73,7 @@ export const useAlarmStore = create<AlarmStore>()(
         daysOfWeek: [1, 2, 3, 4, 5], // Mon–Fri default
         destination: { label: '', address: '', latitude: 0, longitude: 0 },
         prepMinutes: DEFAULT_PREP_MINUTES,
+        alarmSoundId: DEFAULT_ALARM_SOUND_ID,
         createdAt: now,
         updatedAt: now,
       };

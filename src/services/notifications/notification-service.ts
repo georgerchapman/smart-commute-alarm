@@ -79,7 +79,7 @@ export const NotificationService = {
         categoryIdentifier: ALARM_CATEGORY_ID,
         // Bypasses the ringer switch on iOS (requires Critical Alerts entitlement).
         // In Expo Go this has no effect; verified in dev build.
-        interruptionLevel: 'critical' as const,
+        interruptionLevel: 'timeSensitive' as const,
       } : {}),
     };
 

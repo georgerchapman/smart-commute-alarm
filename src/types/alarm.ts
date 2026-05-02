@@ -24,6 +24,7 @@ export interface AlarmConfig {
   daysOfWeek: number[]; // 0=Sun…6=Sat; [] = one-off (next occurrence only)
   destination: Destination;
   prepMinutes: number; // user-configured preparation buffer, default 30
+  alarmSoundId?: string; // ID from ALARM_SOUNDS catalog, defaults to DEFAULT_ALARM_SOUND_ID
   calendarEventId?: string; // Phase 2: calendar sync
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601

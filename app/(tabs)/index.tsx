@@ -1,4 +1,4 @@
-import { View, ScrollView, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Modal, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -6,6 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useCountdown } from '@/src/hooks/use-countdown';
 import * as Location from 'expo-location';
+import * as Battery from 'expo-battery';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AlarmCard } from '@/components/alarm/alarm-card';
@@ -17,6 +18,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { logger } from '@/src/utils/logger';
 import { isInMonitoringWindow } from '@/src/utils/backoff';
 import { FOREGROUND_TRAFFIC_MIN_INTERVAL_MS } from '@/src/constants/alarm';
+import { AlarmAudioService } from '@/src/services/audio/alarm-audio-service';
 
 export default function AlarmScreen() {
   const router = useRouter();
@@ -43,6 +45,18 @@ export default function AlarmScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpired]);
+
+  // Start / stop alarm audio when status changes to / from firing.
+  // This handles the case where the user is on the home screen (not Bedside Mode)
+  // when the alarm fires. Bedside mode has its own identical effect.
+  useEffect(() => {
+    if (status === 'firing') {
+      AlarmAudioService.play(config?.alarmSoundId).catch((err) => logger.error('Audio play failed on home screen', err));
+    } else {
+      AlarmAudioService.stop().catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   // Auto-refresh live traffic when the screen focuses, but only:
   //  1. Within the monitoring window (≤60 min before the scheduled wake time)
@@ -137,6 +151,28 @@ export default function AlarmScreen() {
   const handleToggle = async (enabled: boolean) => {
     if (enabled) {
       logger.ui(`Alarm toggle ON — nominalJourney: ${nominalSeconds != null ? `${Math.round(nominalSeconds / 60)} min` : 'not available (will use 45 min fallback)'}`);
+
+      // Battery warning — Bedside Mode keeps the screen on overnight (REQ-2.2)
+      try {
+        const [level, state] = await Promise.all([
+          Battery.getBatteryLevelAsync(),
+          Battery.getBatteryStateAsync(),
+        ]);
+        const isCharging =
+          state === Battery.BatteryState.CHARGING || state === Battery.BatteryState.FULL;
+        logger.alarm(`Battery: ${Math.round(level * 100)}% | charging: ${isCharging}`);
+        if (level < 0.2 && !isCharging) {
+          Alert.alert(
+            'Low Battery',
+            'Bedside Mode keeps your screen on overnight. Please plug in your device before sleeping.',
+            [{ text: 'OK' }]
+          );
+        }
+      } catch {
+        // Battery API unavailable on some simulators — non-fatal
+        logger.warn('Battery level check failed — continuing');
+      }
+
       await enableAlarm(nominalSeconds ?? undefined);
       // Immediately fetch live traffic so the alarm is refined with real data
       // before the first background check fires. refreshTraffic will reschedule
@@ -228,6 +264,21 @@ export default function AlarmScreen() {
           onEditArrivalTime={() => setShowTimePicker(true)}
         />
 
+        {/* Bedside Mode button — shown when alarm is armed and ready */}
+        {(status === 'scheduled' || status === 'monitoring') && (
+          <TouchableOpacity
+            style={[styles.bedsideBtn, { borderColor: tint }]}
+            onPress={() => {
+              logger.ui('Navigating to Bedside Mode');
+              router.push('/bedside' as any);
+            }}
+          >
+            <ThemedText style={[styles.bedsideBtnText, { color: tint }]}>
+              Go to Bedside Mode
+            </ThemedText>
+          </TouchableOpacity>
+        )}
+
         {/* Android: DateTimePicker renders as a dialog directly */}
         {showTimePicker && Platform.OS === 'android' && (
           <DateTimePicker
@@ -291,6 +342,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   gap: { height: 4 },
+  bedsideBtn: {
+    marginHorizontal: 20,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  bedsideBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
   empty: {
     flex: 1,
     justifyContent: 'center',

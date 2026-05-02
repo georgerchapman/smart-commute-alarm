@@ -12,11 +12,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.syncwake.app",
       "infoPlist": {
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "SyncWake needs your location to calculate live commute times, even when the app is in the background.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SyncWake uses your location to calculate your live commute time while the app is open.",
         "NSLocationWhenInUseUsageDescription": "SyncWake uses your location to calculate your live commute time.",
         "UIBackgroundModes": [
           "fetch",
-          "remote-notification"
+          "remote-notification",
+          "audio"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -35,15 +36,13 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
         "SCHEDULE_EXACT_ALARM",
         "USE_EXACT_ALARM",
         "VIBRATE",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -67,8 +66,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "SyncWake needs your location to calculate live commute times in the background.",
-          "isAndroidBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "SyncWake uses your location to calculate your live commute time while the app is open.",
+          "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
       ],

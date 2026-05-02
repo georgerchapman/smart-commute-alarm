@@ -27,19 +27,18 @@ jest.mock('expo-background-fetch', () => ({
   registerTaskAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('expo-location', () => ({
-  getCurrentPositionAsync: jest.fn().mockResolvedValue({
-    coords: { latitude: 51.5074, longitude: -0.1278, altitude: null, accuracy: 5 },
-    timestamp: Date.now(),
-  }),
-  Accuracy: { Balanced: 3, High: 4, Low: 2 },
-}));
+// expo-location is no longer used by the background task — it uses cached location instead.
 
 jest.mock('@/src/services/storage/alarm-storage', () => ({
   AlarmStorage: {
     readConfig: jest.fn(),
     readState: jest.fn(),
     writeState: jest.fn(),
+    readLastKnownLocation: jest.fn().mockReturnValue({
+      latitude: 51.5074,
+      longitude: -0.1278,
+      fetchedAt: new Date().toISOString(),
+    }),
   },
 }));
 
